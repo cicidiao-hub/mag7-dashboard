@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Mag7 AI 行情看板 - 通过 FutuOpenD 实时拉取数据生成单文件 HTML 看板."""
-import base64
-import hmac
 import json
 import math
 import os
-import secrets
 import subprocess
 import threading
 import warnings
@@ -36,9 +33,7 @@ OUT = Path.home() / "Desktop" / "mag7_dashboard.html"
 WATCHLIST_FILE = Path.home() / ".watchlist_dashboard.json"
 US_UNIVERSE_FILE = Path.home() / ".us_stock_universe.json"
 POSITIONS_FILE = Path.home() / ".positions_dashboard.json"
-AUTH_FILE = Path.home() / ".dashboard_auth.json"
 MAX_WATCHLIST = 20  # 防止 yfinance 限流，自选最多 20 只
-AUTH_REALM = "Mag7 Dashboard"
 
 DEFAULT_WATCHLIST = [
     ("US.NVDA",  "NVIDIA"),
@@ -79,40 +74,6 @@ def load_positions():
 
 def save_positions(pos):
     POSITIONS_FILE.write_text(json.dumps(pos, ensure_ascii=False, indent=2))
-
-# ---------------- 鉴权 ----------------
-def load_auth():
-    """读取 ~/.dashboard_auth.json {users:{user:pass,...}}. 不存在则生成默认 admin."""
-    if AUTH_FILE.exists():
-        try:
-            return json.loads(AUTH_FILE.read_text()).get("users") or {}
-        except Exception:
-            return {}
-    pw = secrets.token_urlsafe(12)
-    AUTH_FILE.write_text(json.dumps({"users": {"admin": pw}}, indent=2))
-    try: AUTH_FILE.chmod(0o600)
-    except Exception: pass
-    print("="*60)
-    print(f"[auth] 已生成默认账号 → admin / {pw}")
-    print(f"[auth] 编辑 {AUTH_FILE} 添加更多用户 (修改后重启服务生效)")
-    print("="*60)
-    return {"admin": pw}
-
-# 内存缓存账号表；编辑文件后会被自动重读 (按 mtime)
-_AUTH_CACHE = {"mtime": None, "users": {}}
-def get_users():
-    try:
-        mt = AUTH_FILE.stat().st_mtime if AUTH_FILE.exists() else 0
-    except Exception:
-        mt = 0
-    if mt != _AUTH_CACHE["mtime"]:
-        _AUTH_CACHE["users"] = load_auth()
-        _AUTH_CACHE["mtime"] = mt or _AUTH_CACHE.get("mtime") or 0
-        # 生成后文件 mtime 才存在，下一次进来再次同步
-        if mt == 0 and AUTH_FILE.exists():
-            try: _AUTH_CACHE["mtime"] = AUTH_FILE.stat().st_mtime
-            except Exception: pass
-    return _AUTH_CACHE["users"]
 
 def load_universe():
     """美股全列表：本地缓存 24h，否则从 Futu 拉。"""
@@ -1226,7 +1187,34 @@ if (!PUBLIC_MODE) refreshSnapState();
 </body></html>
 """
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
 class Handler(BaseHTTPRequestHandler):
+    def _deny(self, why):
+        body = f"Forbidden: {why}".encode("utf-8")
+        self.send_response(403)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        print(f"[block] {why} from {self.client_address[0]} on {self.command} {self.path}")
+        return False
+
+    def _local_only(self):
+        # Host 必须是 loopback，防 DNS rebinding（攻击者把 evil.com 解析到 127.0.0.1）
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+        if host not in LOCAL_HOSTS:
+            return self._deny(f"非法 Host: {host or '(空)'}")
+        # 写操作必须带本地 Origin/Referer，防止浏览器跨站 fetch
+        if self.command in ("POST", "PUT", "DELETE", "PATCH"):
+            from urllib.parse import urlparse
+            ref = self.headers.get("Origin") or self.headers.get("Referer") or ""
+            if not ref:
+                return self._deny("缺少 Origin/Referer (CSRF 防护)")
+            if (urlparse(ref).hostname or "") not in LOCAL_HOSTS:
+                return self._deny(f"非法 Origin/Referer: {ref}")
+        return True
+
     def _json(self, obj, status=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -1236,36 +1224,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _check_auth(self):
-        """返回 (ok, username|None). 未通过自动响应 401."""
-        users = get_users()
-        if not users:
-            return True, "anonymous"
-        h = self.headers.get("Authorization", "")
-        if h.startswith("Basic "):
-            try:
-                decoded = base64.b64decode(h[6:]).decode("utf-8", "ignore")
-                user, _, pw = decoded.partition(":")
-                expected = users.get(user)
-                if expected and hmac.compare_digest(expected, pw):
-                    self._auth_user = user
-                    return True, user
-            except Exception:
-                pass
-        body = b"Authentication required"
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", f'Basic realm="{AUTH_REALM}", charset="UTF-8"')
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-        # 记录失败来源
-        src = self.headers.get("X-Forwarded-For") or self.client_address[0]
-        print(f"[auth] 401 from {src} on {self.path}")
-        return False, None
-
     def do_GET(self):
-        if not self._check_auth()[0]: return
+        if not self._local_only(): return
         from urllib.parse import urlparse, parse_qs
         u = urlparse(self.path)
         if u.path == "/" or u.path.startswith("/index"):
@@ -1311,7 +1271,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if not self._check_auth()[0]: return
+        if not self._local_only(): return
         from urllib.parse import urlparse
         u = urlparse(self.path)
         try:
@@ -1380,13 +1340,13 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 def main():
-    # 启动时先加载/生成账号 (确保打印出来给用户看)
-    users = get_users()
     bind = os.environ.get("DASHBOARD_BIND", "127.0.0.1")
+    if bind not in LOCAL_HOSTS:
+        raise SystemExit(f"❌ 服务无鉴权，禁止绑定 {bind}；如需公网暴露请先恢复 Basic Auth")
     url = f"http://{bind}:{SERVE_PORT}/"
     srv = ThreadingHTTPServer((bind, SERVE_PORT), Handler)
     srv.daemon_threads = True
-    print(f"服务启动: {url}  (Ctrl+C 退出) · 账号 {len(users)} 个")
+    print(f"服务启动: {url}  (Ctrl+C 退出)")
     if not os.environ.get("DASHBOARD_NO_BROWSER"):
         webbrowser.open(url)
     try:
