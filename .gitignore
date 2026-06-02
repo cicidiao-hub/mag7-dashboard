@@ -1,0 +1,22 @@
+# 私密数据：永远不要提交
+.dashboard_auth.json
+.positions_dashboard.json
+.watchlist_dashboard.json
+.us_stock_universe.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 日志
+*.log
+
+# 用户本地数据 (如果哪天放进项目目录)
+.local/

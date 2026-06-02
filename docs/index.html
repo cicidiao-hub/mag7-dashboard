@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"/>
+<title>自选股分析看板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,"PingFang SC",sans-serif;background:#0b1020;color:#e2e8f0}
+  header{padding:20px 28px;background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid #1e293b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+  h1{margin:0;font-size:22px;font-weight:600} .meta{color:#94a3b8;font-size:13px}
+  .container{padding:20px 28px;max-width:1700px;margin:0 auto}
+  .grid{display:grid;gap:16px} .summary{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:24px}
+  .card{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+  .card .sig{position:absolute;top:0;right:0;padding:3px 10px;font-size:11px;font-weight:600;border-bottom-left-radius:8px;color:#fff}
+  .card .sym{font-size:13px;color:#94a3b8} .card .nm{font-size:16px;font-weight:600;margin-top:2px}
+  .card .px{font-size:24px;font-weight:700;margin:6px 0 2px}
+  .card .row{display:flex;justify-content:space-between;font-size:12px;color:#cbd5e1;margin-top:4px}
+  .up{color:#22c55e} .dn{color:#ef4444} .nu{color:#94a3b8}
+  .section-title{font-size:15px;font-weight:600;margin:20px 0 10px;color:#e2e8f0;padding-left:8px;border-left:3px solid #3b82f6}
+  table{width:100%;border-collapse:collapse;background:#111827;border-radius:10px;overflow:hidden;font-size:13px}
+  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #1f2937}
+  th{background:#0f172a;color:#94a3b8;font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  th:first-child,td:first-child{text-align:left} tr:hover{background:#1a2236}
+  .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:#fff}
+  .charts{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+  .chart-card{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:10px}
+  .chart-card h3{margin:4px 8px;font-size:13px;color:#e2e8f0}
+  .chart{height:280px} .bar-chart{height:300px}
+  .reasons{font-size:11px;color:#94a3b8;margin-top:6px}
+  .legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .disclaimer{color:#64748b;font-size:11px;margin-top:24px;text-align:center;padding:12px;border-top:1px solid #1f2937}
+  .toolbar{display:flex;align-items:center;gap:12px}
+  .news-list{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:8px 14px}
+  .news-item{padding:8px 0;border-bottom:1px solid #1f2937;font-size:12px;display:grid;grid-template-columns:50px 1fr auto;gap:10px;align-items:start}
+  .news-item:last-child{border-bottom:none}
+  .news-item .sent{font-size:11px;font-weight:600;text-align:center;padding:2px 6px;border-radius:4px;align-self:center}
+  .news-item a{color:#e2e8f0;text-decoration:none} .news-item a:hover{color:#60a5fa;text-decoration:underline}
+  .news-item .src{color:#64748b;font-size:11px;margin-top:2px}
+  .stock-block{margin-bottom:14px}
+  .stock-block h4{margin:6px 0;font-size:13px;color:#cbd5e1;display:flex;align-items:center;gap:8px}
+  .gauge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600}
+  details summary{cursor:pointer;color:#94a3b8;font-size:12px;padding:6px 0}
+  details[open] summary{color:#e2e8f0}
+  .pricing-card{background:#0f172a;border-left:3px solid #3b82f6;padding:10px 14px;border-radius:6px;margin:6px 0;font-size:12px;color:#cbd5e1;line-height:1.7}
+  .pricing-card b{color:#e2e8f0}
+  .btn{background:#3b82f6;color:#fff;border:none;padding:7px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background .15s}
+  .btn:hover{background:#2563eb} .btn:disabled{background:#475569;cursor:not-allowed}
+  .btn .spin{display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp 0.7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #ago{color:#cbd5e1;font-size:12px;font-variant-numeric:tabular-nums}
+  .search-wrap{position:relative}
+  .search-wrap input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:7px 12px;border-radius:6px;width:260px;font-size:13px;outline:none}
+  .search-wrap input:focus{border-color:#3b82f6}
+  .search-results{position:absolute;top:38px;right:0;background:#0f172a;border:1px solid #334155;border-radius:6px;max-height:340px;overflow-y:auto;width:380px;z-index:1000;display:none;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .search-results.show{display:block}
+  .sr-item{padding:9px 14px;cursor:pointer;border-bottom:1px solid #1f2937;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .sr-item:hover{background:#1e293b} .sr-item:last-child{border-bottom:none}
+  .sr-item .sr-code{color:#60a5fa;font-weight:600;min-width:70px}
+  .sr-item .sr-name{color:#cbd5e1;flex:1;text-align:left}
+  .sr-item .sr-add{color:#22c55e;font-size:18px}
+  .sr-empty{padding:14px;color:#64748b;font-size:13px;text-align:center}
+  .card .rm{position:absolute;bottom:6px;right:8px;background:transparent;border:none;color:#475569;font-size:14px;cursor:pointer;padding:2px 8px;border-radius:4px;transition:all .15s}
+  .card .rm:hover{background:#ef4444;color:#fff}
+  .limit-note{font-size:11px;color:#fbbf24;background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:9px 14px;border-radius:6px;margin-bottom:14px;line-height:1.6}
+  .btn-ghost{background:transparent;color:#94a3b8;border:1px solid #334155;padding:6px 12px;font-size:12px}
+  .btn-ghost:hover{background:#1e293b;color:#e2e8f0}
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px}
+  .rule{background:#111827;border:1px solid #1f2937;border-radius:8px;padding:12px 14px;border-top:3px solid #ef4444}
+  .rule h4{margin:0 0 6px;font-size:13px;color:#fca5a5}
+  .rule ul{margin:0;padding-left:18px;font-size:12px;color:#cbd5e1;line-height:1.6}
+  .rule li{margin-bottom:3px}
+  .portfolio{background:#0f172a;border:1px solid #1f2937;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+  .portfolio .item{text-align:center}
+  .portfolio .label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
+  .portfolio .val{font-size:20px;font-weight:700;margin-top:2px}
+  .pos-panel{background:#0f172a;border-top:1px solid #1f2937;margin-top:8px;padding:8px;border-radius:0 0 8px 8px;font-size:11px}
+  .pos-panel .pos-row{display:grid;grid-template-columns:55px 1fr;gap:6px;align-items:center;margin-bottom:4px}
+  .pos-panel input{background:#0b1020;border:1px solid #334155;color:#e2e8f0;padding:3px 6px;border-radius:4px;width:100%;font-size:11px;outline:none}
+  .pos-panel input:focus{border-color:#3b82f6}
+  .pos-panel .pos-stat{display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:#94a3b8}
+  .pos-panel .pos-stat b{color:#e2e8f0;font-size:12px}
+  .sl-tp-table th, .sl-tp-table td{font-size:12px;padding:8px 10px}
+</style></head>
+<body>
+<header>
+  <div>
+    <h1>自选股分析看板 <span style="font-size:12px;color:#94a3b8;font-weight:400">(<span id="wl_count">0</span> 只)</span></h1>
+    <div class="meta">数据源 FutuOpenD + Yahoo Finance · 近3个月 · 更新 <span id="ts">-</span> · <span id="ago">刚刚</span> · 综合信号 <span id="overall"></span></div>
+  </div>
+  <div class="toolbar">
+    <div class="search-wrap">
+      <input id="searchInput" placeholder="搜索代码或公司名 (如 AMD / palantir)" autocomplete="off"/>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+    <button class="btn btn-ghost" onclick="resetWatchlist()" title="恢复默认 Mag7">↺ 默认</button>
+    <button id="refreshBtn" class="btn" onclick="refresh()"><span>⟳</span><span>刷新</span></button>
+  </div>
+</header>
+<div class="container">
+  <div class="limit-note">
+    ⓘ <b>舆论数据局限</b>：新闻取自 Yahoo Finance 按 ticker 关联的近 6 条头条，可能包含竞品/行业稿；情感打分基于英文正负词典，无法识别否定/反讽。仅作快速参考，独立下单请用专业金融 NLP + 多源 (Reuters/Bloomberg/FT)。
+  </div>
+
+  <div class="section-title">交易铁律 (常见流派红线 · 参考)</div>
+  <div class="rules">
+    <div class="rule"><h4>🛑 止损铁律</h4><ul>
+      <li><b>O'Neil 7% 法</b>：买入价跌 7% 无条件清仓，永不破例</li>
+      <li><b>ATR 法</b>：跌破 入场价 − 2×ATR(14)</li>
+      <li><b>技术法</b>：跌破 MA50 或前期重要支撑</li>
+      <li><b>时间法</b>：3 月未明显趋势 → 退出找更好标的</li>
+    </ul></div>
+    <div class="rule"><h4>💰 止盈分批</h4><ul>
+      <li><b>+20%</b> 卖 1/3 锁利</li>
+      <li><b>+50%</b> 再卖 1/3</li>
+      <li><b>剩余</b> 用 trailing stop 跟高点 −10%</li>
+      <li>到分析师目标价附近优先减仓而非追涨</li>
+    </ul></div>
+    <div class="rule"><h4>📊 仓位红线</h4><ul>
+      <li>单只 ≤ <b>10%</b> (集中仓 Buffett 风格)，<b>5%</b> (分散)</li>
+      <li>单板块 ≤ <b>30%</b>，避免行业塌方</li>
+      <li>现金保留 ≥ <b>10%</b> 应对回调</li>
+      <li><b>禁用杠杆</b>炒个股，禁裸卖期权</li>
+    </ul></div>
+    <div class="rule"><h4>⛔ 操作禁区</h4><ul>
+      <li><b>不补亏损股</b> (Don't average down)</li>
+      <li><b>不接飞刀</b>：单日跌 &gt;5% 当日不抄底</li>
+      <li><b>财报前减仓至 1/2</b>，避免单日 20% 波动</li>
+      <li>连续两季盈利下滑 → 退出</li>
+    </ul></div>
+  </div>
+
+  <div class="section-title">持仓汇总 (本地存储 + 服务器同步)</div>
+  <div class="portfolio" id="portfolio_box"></div>
+
+  <div class="section-title">自选汇总卡片 (填写仓位+成本 / × 删除自选)</div>
+  <div class="grid summary" id="cards"></div>
+
+  <div class="section-title">明细对比</div>
+  <table id="tbl"><thead><tr>
+    <th>标的</th><th>最新</th><th>当日%</th><th>1W%</th><th>1M%</th><th>3M%</th>
+    <th>区间位置</th><th>量比</th><th>年化波动率</th><th>RSI14</th><th>PE</th><th>市值(B)</th><th>信号</th>
+  </tr></thead><tbody></tbody></table>
+
+  <div class="section-title">横向对比</div>
+  <div class="grid charts">
+    <div class="chart-card"><h3>3个月涨跌幅 (%)</h3><div id="cmp_chg" class="bar-chart"></div></div>
+    <div class="chart-card"><h3>年化波动率 (%) · 越高风险越大</h3><div id="cmp_vol" class="bar-chart"></div></div>
+    <div class="chart-card"><h3>量比 (今日/20日均) · &gt;1.5 异动</h3><div id="cmp_vr" class="bar-chart"></div></div>
+    <div class="chart-card"><h3>市盈率 PE</h3><div id="cmp_pe" class="bar-chart"></div></div>
+  </div>
+
+  <div class="section-title">K线 · MA · 成交量 (近3个月)</div>
+  <div class="grid charts" id="klines"></div>
+
+  <div class="section-title">交易信号解读 (技术面)</div>
+  <table><thead><tr><th>标的</th><th>评分</th><th>建议</th><th>主要依据</th><th>关键位 (支撑 / 阻力)</th></tr></thead>
+  <tbody id="sig_tbl"></tbody></table>
+
+  <div class="section-title">分析师定价 (华尔街共识)</div>
+  <table id="ana_tbl"><thead><tr>
+    <th>标的</th><th>现价</th><th>目标价(均)</th><th>目标区间(低-高)</th><th>上涨空间</th>
+    <th>分析师数</th><th>评级</th><th>共识分(1=强买)</th><th>远期PE</th><th>盈利增速</th><th>营收增速</th>
+  </tr></thead><tbody></tbody></table>
+
+  <div class="section-title">定价逻辑解读</div>
+  <div id="pricing_box"></div>
+
+  <div class="section-title">PE 估值对比 (当前 vs 远期)</div>
+  <div class="chart-card"><div id="cmp_pe2" style="height:320px"></div></div>
+
+  <div class="section-title">个性化交易建议 (止损 / 止盈 / 仓位健康)</div>
+  <table class="sl-tp-table"><thead><tr>
+    <th>标的</th><th>现价</th><th>O'Neil -7%</th><th>2×ATR 止损</th><th>MA50</th><th>建议止损 (最近触发)</th><th>止盈一 +20%</th><th>止盈二 +50%</th><th>分析师目标</th><th class="pos-col">仓位状态</th>
+  </tr></thead><tbody id="sltp_tbl"></tbody></table>
+
+  <div class="section-title">板块舆论情绪</div>
+  <div class="grid charts">
+    <div class="chart-card"><h3>舆论情感分排行 (近6条标题均值)</h3><div id="cmp_sent" class="bar-chart"></div></div>
+    <div class="chart-card"><h3>分析师上涨空间 (目标均价 vs 现价 %)</h3><div id="cmp_upside" class="bar-chart"></div></div>
+  </div>
+
+  <div class="section-title">最新舆论 (展开查看)</div>
+  <div id="news_box"></div>
+
+  <div class="disclaimer">⚠️ 本看板基于公开行情技术指标自动生成，仅供研究参考，不构成投资建议。交易决策请结合基本面、宏观环境与风险承受能力，并自负盈亏。</div>
+</div>
+
+<script>
+const BOOT = {"data": [{"last": 211.14, "chg1d": -1.4515752625437583, "chg1w": -3.8130381303813077, "chg1m": 5.797464548779874, "chg3m": 15.71209334617054, "hi3m": 236.54, "lo3m": 164.27, "pos_in_range": 64.85401964854019, "vol_today": 289410623.0, "vol_avg20": 166242030.4, "vol_ratio": 1.7408992317023577, "vol_annual": 35.34806655482593, "ma20": 215.458, "ma50": 199.3488, "bb_up": 235.21501618213276, "bb_dn": 195.70098381786724, "bb_pos": 39.07223651538791, "rsi": 46.25184638109306, "macd_hist": -4.360180740301777, "atr": 7.808135714285716, "pe": 43.089, "pb": 26.14, "mcap": 5109588000000.0, "turnover": 61732106668.0, "score": -1.0, "signal": "卖出", "color": "#f59e0b", "reasons": ["RSI=46 中性", "MACD 空头", "放量下跌 (1.7×)"], "sug": {"sl_oneil": 196.3602, "sl_atr": 195.52372857142856, "sl_ma50": 199.3488, "sl_3m_lo": 194.74, "sl_final": 196.3602, "sl_pct": -6.999999999999995, "tp1": 253.36799999999997, "tp2": 316.71}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[175.000528108, 182.470123817, 174.630548133, 183.450070777], [178.480339764, 180.040255333, 176.910424735, 180.89020933], [180.430234226, 183.030093509, 180.050254792, 184.690003666], [181.160194717, 183.330077272, 177.870372778, 184.050038304], [179.830266699, 177.810376025, 176.810530142, 182.746208874], [176.820429606, 182.640114616, 175.550498341, 182.900100544], [182.390128147, 184.759999878, 182.000149254, 186.429909494], [185.91, 186.03, 184.45, 187.62], [184.05, 183.14, 181.75, 184.94], [184.92, 180.25, 179.94, 186.09], [182.97, 183.22, 181.41, 188.88], [185.06, 181.93, 181.6804, 185.4], [182.48, 180.4, 180.33, 183.38], [178.01, 178.56, 175.785, 179.98], [178.0, 172.7, 171.72, 178.26], [177.255, 175.64, 174.76, 178.37], [174.83, 175.2, 173.98, 176.22], [177.1, 178.68, 176.85, 181.22], [176.07, 171.24, 171.14, 176.51], [170.0, 167.52, 167.01, 170.97], [168.78, 165.17, 164.27, 169.45], [166.97, 174.4, 166.96, 174.62], [176.0, 175.75, 174.75, 177.37], [172.18, 177.39, 171.37, 177.49], [177.155, 177.64, 175.76, 177.79], [175.725, 178.1, 173.66, 178.23], [184.5, 182.08, 180.3, 185.26], [181.84, 183.91, 180.62, 184.08], [184.31, 188.63, 184.3, 190.0], [186.03, 189.31, 185.74, 189.66], [190.84, 196.51, 190.77, 196.51], [196.54, 198.87, 195.74, 200.4], [197.43, 198.35, 195.81, 199.85], [199.9, 201.68, 199.27, 201.7], [199.98, 202.06, 197.8397, 202.17], [202.13, 199.88, 199.0, 202.75], [200.99, 202.5, 199.0, 202.5], [202.46, 199.64, 197.2206, 203.829], [199.96, 208.27, 199.81, 210.95], [209.645, 216.61, 207.38, 216.825], [209.49, 213.17, 208.2, 214.73], [212.7, 209.25, 207.5758, 212.72], [209.93, 199.57, 198.7, 210.3], [201.28, 198.45, 197.12, 203.0], [199.5, 198.48, 194.74, 201.73], [199.3, 196.5, 196.03, 200.24], [199.89, 207.83, 198.61, 208.265], [208.34, 211.5, 206.5, 214.2], [213.03, 215.2, 212.89, 217.8], [214.035, 219.44, 213.89, 222.3], [218.545, 220.78, 214.92, 223.75], [224.93, 225.83, 221.5653, 227.84], [229.85, 235.74, 229.3, 236.54], [229.76, 225.32, 224.24, 231.5], [229.87, 222.32, 218.37, 230.0], [219.62, 220.61, 217.91, 224.48], [223.18, 223.47, 220.495, 226.13], [222.29, 219.51, 217.93, 227.3999], [220.904, 215.33, 214.8, 221.01], [216.54, 214.86, 212.0, 218.18], [214.12, 212.6, 208.78, 214.15], [211.275, 214.25, 211.22, 215.5191], [214.575, 211.14, 211.13, 217.8599]], "volumes": [209095331.0, 178099430.0, 177731198.0, 198779729.0, 189021949.0, 177213588.0, 179118528.0, 145280386.0, 155762663.0, 160988424.0, 217307380.0, 182497757.0, 156683136.0, 170968527.0, 241323528.0, 182836294.0, 147667844.0, 162602054.0, 186152232.0, 196212684.0, 185626992.0, 226181301.0, 168132005.0, 143143157.0, 107564279.0, 132534902.0, 147732686.0, 116428523.0, 160459524.0, 133648180.0, 161307010.0, 185338388.0, 134012859.0, 160324416.0, 119381388.0, 107945302.0, 107501042.0, 113561830.0, 214134441.0, 187172421.0, 180275363.0, 123711821.0, 225239156.0, 128646996.0, 125368092.0, 113406620.0, 188362812.0, 168307873.0, 136421361.0, 160685774.0, 159176619.0, 150405386.0, 180782857.0, 180977639.0, 146280896.0, 140948207.0, 184201587.0, 203381760.0, 169275710.0, 187202576.0, 167601172.0, 143996048.0, 289410623.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 179.4295520225, 178.56454583165, 178.282533065, 177.91852838955, 177.62152452595, 177.6130057247, 177.3859999939, 177.252, 177.14600000000002, 177.4205, 177.8735, 178.53799999999998, 179.385, 180.2825, 181.4385, 182.9065, 184.11849999999998, 185.4835, 186.5315, 188.38299999999998, 190.8375, 193.2375, 194.98, 196.171, 197.224, 198.26600000000002, 199.186, 200.4735, 201.853, 203.18149999999997, 204.688, 205.9015, 207.24949999999998, 209.119, 210.30100000000002, 211.314, 212.3505, 213.39899999999997, 214.3925, 214.7455, 214.658, 214.6295, 214.8795, 215.458], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 189.494620809, 190.26081833266, 191.17661322599997, 192.23081135582, 193.07060981038, 193.96080228988, 194.72019999756, 195.49439999999998, 196.16400000000002, 196.8078, 197.5, 198.08759999999998, 198.73399999999998, 199.3488], "code": "US.NVDA", "name": "NVIDIA", "analyst": {"tgt_mean": 296.81033, "tgt_high": 500.0, "tgt_low": 180.0, "tgt_median": 285.0, "n_analyst": 58, "rec_key": "strong_buy", "rec_mean": 1.29508, "fwd_pe": 16.681019, "trail_pe": 32.383434, "eps_g": 2.145, "rev_g": 0.852, "margin": 0.62966, "beta": 2.244, "sector": "Technology", "industry": "Semiconductors"}, "news": [{"title": "Nvidia debuts RTX Spark processor for Windows laptops, taking aim at Intel, AMD", "summary": "Nvidia debuted its RTX Spark processor for Windows laptops, taking aim at Intel and AMD.", "url": "https://finance.yahoo.com/news/nvidia-debuts-rtx-spark-processor-for-windows-laptops-taking-aim-at-intel-amd-053000567.html", "provider": "Yahoo Finance", "pub": "2026-06-01", "sent": 3}, {"title": "Could SpaceX IPO Be Bad News for Tesla Investors?", "summary": "For years, Tesla dominated Elon Musk's growth narrative. But SpaceX may soon compete for investor attention, capital, and excitement.", "url": "https://www.fool.com/investing/2026/06/01/could-spacex-ipo-be-bad-news-for-tesla-investors/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 1}, {"title": "The Stock Market Just Did Something Incredible. History Says This Will Happen Next.", "summary": "The S&P 500 just notched a nine-week win streak, something it has only done 10 times in history.", "url": "https://www.fool.com/investing/2026/06/01/stock-market-did-incredible-history-says-this-next/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 1}, {"title": "Prediction: This Will Be Palantir's Stock Price in a Year", "summary": "Most Wall Street analysts think Palantir stock is deeply undervalued.", "url": "https://www.fool.com/investing/2026/06/01/this-will-be-palantirs-stock-price-in-year/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 0}, {"title": "QCOM Stock Slides Premarket: Qualcomm's Dragonfly AI Push Gets Overshadowed By Nvidia's Computex Blitz", "summary": "CEO Cristiano Amon said future AI systems will require \"gazillions\" of tokens, while highlighting opportunities in robotics, automotive AI and AI-native 6G netw", "url": "https://stocktwits.com/news-articles/markets/equity/qcom-stock-slides-dragonfly-overshadowed-by-nvidia-computex/cZ0gVgOReHT", "provider": "Stocktwits", "pub": "2026-06-01", "sent": 1}, {"title": "Is Pfizer the Perfect Stock to Own with Kevin Warsh Heading the Fed?", "summary": "Pfizer could attract investors if Warsh's \"regime change\" at the Fed leads to market turbulence.", "url": "https://www.fool.com/investing/2026/06/01/is-pfizer-the-perfect-stock-to-own-with-kevin-wars/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 1}], "sent_avg": 1.17, "sent_label": "看多", "upside": 40.575130245334876, "pricing_logic": "58位分析师给出共识 [强烈买入] (评分 1.30/5, 越低越多头) · 目标价区间 $180 – $500，均价 $296.8 (+40.6% vs 现价) · 远期PE 16.7× vs 当前PE 32.4× → 估值消化(盈利增长快于股价) · 盈利同比 +214% / 营收 +85% / 净利率 63%"}, {"last": 450.24, "chg1d": 5.445092390922501, "chg1w": 7.432771003841676, "chg1m": 10.651619033960525, "chg3m": 13.214194479160701, "hi3m": 450.33, "lo3m": 355.510003032, "pos_in_range": 99.9050833127211, "vol_today": 79654376.0, "vol_avg20": 34947746.7, "vol_ratio": 2.279242112052964, "vol_annual": 28.465314236906238, "ma20": 416.96685132625, "ma50": 402.06495287162, "bb_up": 436.18594770163793, "bb_dn": 397.74775495086203, "bb_pos": 136.56272913111502, "rsi": 71.70548743507783, "macd_hist": 3.429167015749389, "atr": 11.664448492785713, "pe": 33.008, "pb": 8.071, "mcap": 3344578441128.96, "turnover": 35539488175.0, "score": 2.0, "signal": "买入", "color": "#22c55e", "reasons": ["RSI=72 超买", "MACD 金叉", "均线多头排列", "触及布林上轨", "放量上涨 (2.3×)"], "sug": {"sl_oneil": 418.7232, "sl_atr": 426.9111030144286, "sl_ma50": 402.06495287162, "sl_3m_lo": 400.013612932, "sl_final": 426.9111030144286, "sl_pct": -5.181435897648234, "tp1": 540.288, "tp2": 675.36}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[392.005956666, 397.688648558, 389.785765365, 400.322942956], [392.290340721, 403.057021232, 391.821356491, 405.821034672], [400.397780865, 404.324276492, 399.444844823, 410.144271001], [403.545962238, 409.792433045, 403.526005462, 410.720423117], [408.31563164, 408.076150331, 407.627222661, 412.15731097], [404.039892438, 408.525177785, 402.627950554, 409.323448815], [409.143837833, 404.883066213, 402.059182445, 409.313470427], [404.693476843, 404.00496808, 400.722078471, 408.12604227], [403.755508383, 400.991494943, 400.841819125, 405.242288176], [400.133353587, 394.695132197, 393.397941774, 403.925140977], [397.209685941, 399.08562286, 393.936774719, 399.764153235], [399.404931272, 398.546789915, 396.885388335, 403.526005462], [396.266728287, 390.943258358, 390.154965717, 397.139837226], [389.256910808, 388.179244918, 386.223480896, 391.641745509], [385.954064423, 381.044697591, 379.298479714, 386.163610569], [383.070310329, 382.172255421, 380.855108222, 386.373156714], [381.533638597, 371.934429466, 371.046352945, 381.643400863], [376.105395596, 370.238103528, 368.831150838, 376.245093026], [370.013589801, 365.179060878, 364.400746624, 373.91005048], [361.117857015, 355.998944037, 355.739505953, 361.666668348], [361.112867821, 358.184210981, 355.510003032, 364.570379218], [363.7621298, 369.369983783, 362.285328396, 372.094083672], [372.682808556, 368.571712754, 367.404241373, 373.18172795], [366.41139178, 372.652873393, 363.362994286, 372.832484374], [372.682808556, 372.074126896, 368.70282877, 372.922289865], [369.539616377, 371.485402012, 365.767785762, 371.645056218], [384.147976219, 373.520993137, 370.607303879, 384.167932995], [371.694948157, 372.263716266, 366.256726768, 372.692786944], [372.173910775, 370.068470934, 369.230286353, 374.828161948], [372.797560017, 383.539294559, 370.218146752, 383.708927152], [387.076633059, 392.260405557, 385.684647951, 393.836990841], [397.139837226, 410.33126599, 395.872581966, 413.474358385], [418.952593109, 419.351728624, 411.249277674, 419.910518345], [423.901873493, 421.876260755, 419.780799303, 430.647263693], [420.234815951, 417.166461681, 415.400287028, 422.4150937], [419.331771848, 423.243299893, 416.298341936, 426.25677303], [425.263923437, 431.984367668, 422.754358888, 432.762681921], [418.977539079, 414.851475695, 410.520955143, 422.7443805], [416.068839015, 423.702305735, 414.901367634, 424.031592535], [421.462157659, 423.901873493, 416.168722677, 426.186924315], [423.652413796, 428.322299319, 420.988184235, 428.990851307], [423.65740299, 423.54265153, 419.381663788, 425.897551067], [409.922152087, 406.898700562, 397.149815613, 413.524350108], [411.907851273, 413.544306884, 409.547962542, 416.208536445], [410.650574401, 412.726079078, 409.912173699, 419.870604793], [414.422405016, 410.490920196, 407.916496125, 415.879149861], [407.118225096, 413.065344266, 404.234471001, 417.518499205], [419.202052806, 419.860626405, 417.854970444, 427.05504406], [416.482942111, 414.222837259, 413.105257818, 417.725251401], [406.988506053, 411.768153843, 404.623628128, 411.798089007], [413.584220435, 406.888722174, 405.761164345, 414.602015998], [402.328598918, 404.33425488, 400.16328875, 405.431877545], [403.605832565, 408.545134561, 400.013612932, 410.949926038], [413.37467429, 421.008141011, 412.01761354, 427.244633429], [415.719595439, 422.624639845, 414.711778265, 424.201225129], [428.970894531, 416.517866469, 415.589876397, 431.764843134], [413.269901217, 420.149999654, 410.411192876, 421.187751992], [424.75, 419.09, 415.71, 426.34], [419.535, 418.57, 416.33, 424.4], [416.43, 416.03, 413.02, 419.77], [411.01, 412.67, 409.58, 415.94], [412.975, 426.99, 412.67, 429.49], [432.545, 450.24, 432.36, 450.33]], "volumes": [35474907.0, 38199209.0, 35807990.0, 39001315.0, 31123859.0, 30131854.0, 31706375.0, 25512139.0, 27263886.0, 26848000.0, 27733721.0, 26228279.0, 25908484.0, 25138772.0, 50853154.0, 29680059.0, 42733625.0, 31181163.0, 36836574.0, 37883400.0, 44797002.0, 45244365.0, 29417206.0, 24099067.0, 16146572.0, 21443349.0, 33064818.0, 30435297.0, 28111128.0, 35745781.0, 37504486.0, 45063389.0, 41642361.0, 48568190.0, 27582237.0, 32048495.0, 29378173.0, 38307959.0, 27457404.0, 30867303.0, 30438087.0, 38288316.0, 70909408.0, 31372361.0, 28066528.0, 25700891.0, 30285898.0, 34942445.0, 33383790.0, 35657943.0, 38594221.0, 29667073.0, 27077542.0, 50771160.0, 32564130.0, 33018678.0, 27864016.0, 31393469.0, 22390344.0, 30398049.0, 28901479.0, 47250541.0, 79654376.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 391.9680387924, 389.99281691355, 388.3084650411, 386.52083685419996, 384.6638588716, 382.86375769985, 381.01176891119997, 379.4436652574, 377.85660266670004, 376.31045146624996, 375.75265958435, 375.4113987192, 376.00062252295004, 377.42104603625, 379.1058968281, 380.9119850326, 382.96553725620004, 385.9680341663, 388.19870277465, 391.1248650175, 394.52001149029996, 398.0269159072, 400.73554929454997, 402.65189868494997, 404.69647035950004, 406.7290679686, 408.6793438778, 410.65656143425, 413.03640694119997, 415.24412525745004, 416.65556822165, 417.3869840525, 417.087133497, 416.54680379385, 416.50339780665, 416.77630671485, 416.44003504365, 415.84831664294995, 416.06024285819996, 415.80362757144997, 415.4100338968, 414.62741893085, 414.79978635435, 416.96685132625], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 397.68405849992, 397.86805997224, 397.89360464519996, 397.97802180658, 398.2023359659, 398.49330575618, 398.65315952986, 398.95849819867993, 399.26019883707994, 399.61176893822, 400.03846629428, 400.31015383708, 400.87901803878003, 402.06495287162], "code": "US.MSFT", "name": "Microsoft", "analyst": {"tgt_mean": 560.6302, "tgt_high": 870.0, "tgt_low": 400.0, "tgt_median": 557.5, "n_analyst": 54, "rec_key": "strong_buy", "rec_mean": 1.30909, "fwd_pe": 23.28298, "trail_pe": 26.81596, "eps_g": 0.234, "rev_g": 0.183, "margin": 0.39341998, "beta": 1.093, "sector": "Technology", "industry": "Software - Infrastructure"}, "news": [{"title": "Nvidia debuts RTX Spark processor for Windows laptops, taking aim at Intel, AMD", "summary": "Nvidia debuted its RTX Spark processor for Windows laptops, taking aim at Intel and AMD.", "url": "https://finance.yahoo.com/news/nvidia-debuts-rtx-spark-processor-for-windows-laptops-taking-aim-at-intel-amd-053000567.html", "provider": "Yahoo Finance", "pub": "2026-06-01", "sent": 3}, {"title": "Big Tech companies are screwing the average investor — here's how", "summary": "Time for some stock splits!", "url": "https://finance.yahoo.com/markets/article/big-tech-companies-are-screwing-the-average-investor--heres-how-123000495.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "Should You Buy Snowflake Stock After Its Recent Surge? The Answer Might Surprise You.", "summary": "Snowflake just posted a strong quarterly report, but its stock might have limited upside from here.", "url": "https://www.fool.com/investing/2026/06/01/should-you-buy-snowflake-stock-after-surge-answer/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 3}, {"title": "Microsoft is bringing out its Copilot 365 AI Assistant to Accenture plc (ACN) Employees", "summary": "Accenture plc (NYSE:ACN) is one of the 8 Most Undervalued AI Stocks to Buy According to Hedge Funds. On April 27, 2026, Reuters reported that Microsoft is bring", "url": "https://finance.yahoo.com/sectors/technology/articles/microsoft-bringing-copilot-365-ai-083018343.html", "provider": "Insider Monkey", "pub": "2026-06-01", "sent": 1}, {"title": "Nvidia Enters Windows Laptop Market, Taking On Intel and AMD", "summary": "(Bloomberg) -- Nvidia Corp. is entering the PC market with a new chip aimed at loosening the stranglehold of Intel Corp. technology in that arena and modernizin", "url": "https://finance.yahoo.com/news/nvidia-enters-windows-laptop-market-taking-on-intel-and-amd-042523139.html", "provider": "Bloomberg", "pub": "2026-06-01", "sent": 1}, {"title": "Sonos (SONO) Appoints Frank Barbieri as Chief Operating Officer", "summary": "Sonos, Inc. (NASDAQ:SONO) is one of the 10 Best Russell 2000 Stocks to Invest In According to Hedge Funds. On May 4, Sonos, Inc. (NASDAQ:SONO) reported that it ", "url": "https://finance.yahoo.com/markets/stocks/articles/sonos-sono-appoints-frank-barbieri-080312003.html", "provider": "Insider Monkey", "pub": "2026-06-01", "sent": 0}], "sent_avg": 1.5, "sent_label": "看多", "upside": 24.518079246624012, "pricing_logic": "54位分析师给出共识 [强烈买入] (评分 1.31/5, 越低越多头) · 目标价区间 $400 – $870，均价 $560.6 (+24.5% vs 现价) · 远期PE 23.3× vs 当前PE 26.8× → 估值持平 · 盈利同比 +23% / 营收 +18% / 净利率 39%"}, {"last": 380.34, "chg1d": -2.5094199369441017, "chg1w": -1.888252592477957, "chg1m": -1.1590436590436681, "chg3m": 24.170607631523545, "hi3m": 408.61, "lo3m": 272.11, "pos_in_range": 79.28937728937726, "vol_today": 44415846.0, "vol_avg20": 27343932.7, "vol_ratio": 1.6243400862378512, "vol_annual": 33.901589292794775, "ma20": 391.149, "ma50": 347.57480000000004, "bb_up": 404.34908436974825, "bb_dn": 377.94891563025175, "bb_pos": 9.057079874535034, "rsi": 35.00879249706914, "macd_hist": -7.876894762339447, "atr": 9.816300000000004, "pe": 35.184, "pb": 9.625, "mcap": 4608199440000.0, "turnover": 16946785171.0, "score": -1.0, "signal": "卖出", "color": "#f59e0b", "reasons": ["RSI=35 中性", "MACD 空头", "放量下跌 (1.6×)"], "sug": {"sl_oneil": 353.7162, "sl_atr": 360.70739999999995, "sl_ma50": 347.57480000000004, "sl_3m_lo": 378.46, "sl_final": 360.70739999999995, "sl_pct": -5.161855182205399, "tp1": 456.40799999999996, "tp2": 570.51}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[303.011690006, 306.304372069, 301.088044187, 308.272986231], [298.379950594, 303.366440273, 296.501273119, 303.726187024], [302.676925668, 302.916756835, 300.538431096, 305.255110713], [302.821823665, 300.668339645, 297.780372676, 303.086637245], [295.881709271, 298.309999837, 294.97234943, 300.31858586], [294.36, 306.36, 294.08, 306.8], [306.17, 307.04, 305.5704, 309.51], [306.75, 308.7, 305.92, 311.42], [306.82, 303.55, 301.03, 308.94], [307.01, 302.28, 300.44, 307.69], [304.35, 305.56, 303.0201, 306.4886], [305.86, 310.92, 305.5, 311.42], [309.27, 307.69, 306.932, 312.47], [304.005, 307.13, 302.35, 308.06], [305.46, 301.0, 298.27, 306.0], [302.11, 302.06, 300.93, 305.98], [299.2, 290.44, 290.33, 299.92], [293.44, 290.93, 289.24, 296.0], [287.91, 280.92, 278.5, 287.95], [277.275, 274.34, 273.95, 279.37], [276.42, 273.5, 272.11, 277.09], [278.04, 287.56, 277.09, 288.08], [290.835, 297.39, 290.41, 300.52], [290.69, 295.77, 289.45, 298.08], [295.87, 299.99, 295.18, 300.62], [302.725, 305.46, 297.72, 305.63], [320.445, 317.32, 315.02, 322.08], [315.905, 318.49, 311.06, 319.54], [320.015, 317.24, 316.32, 321.83], [317.135, 321.31, 315.47, 321.63], [324.785, 332.91, 323.75, 333.29], [332.89, 337.12, 330.9, 337.48], [338.75, 336.02, 334.52, 339.88], [337.65, 341.68, 336.24, 342.32], [340.755, 337.42, 336.61, 341.4], [337.685, 332.29, 331.35, 339.34], [337.02, 339.32, 335.17, 339.82], [341.18, 338.89, 336.18, 341.96], [338.725, 344.4, 335.39, 345.27], [345.98, 350.34, 342.73, 353.18], [348.55, 349.78, 346.12, 352.42], [347.565, 349.94, 344.21, 355.79], [374.07, 384.8, 365.82, 385.84], [381.63, 385.69, 379.05, 386.76], [385.63, 383.25, 379.79, 387.38], [386.23, 388.43, 384.02, 392.8199], [394.245, 398.04, 392.76, 399.8499], [399.92, 397.99, 392.68, 400.1], [397.0, 400.8, 396.36, 402.0], [393.645, 388.64, 388.47, 397.44], [387.34, 387.35, 382.77, 388.52], [385.595, 402.62, 385.0, 403.7], [397.28, 401.07, 395.84, 402.93], [396.315, 396.78, 393.18, 399.5399], [395.685, 396.94, 394.53, 408.61], [396.96, 387.66, 386.11, 397.15], [387.7, 388.91, 382.9, 393.8599], [385.7, 387.66, 383.02, 392.5], [387.345, 382.97, 381.7716, 388.74], [384.51, 388.88, 382.6, 389.2599], [386.665, 388.83, 385.9, 393.88], [388.0, 390.13, 385.16, 391.87], [385.24, 380.34, 378.46, 385.24]], "volumes": [34790203.0, 35496961.0, 29536190.0, 35752321.0, 25576916.0, 29312149.0, 23239684.0, 24125714.0, 24928347.0, 23693092.0, 23519709.0, 21955171.0, 20009815.0, 25075831.0, 44364079.0, 29326946.0, 36864278.0, 29460669.0, 39080578.0, 35890612.0, 35141244.0, 43875400.0, 37684462.0, 21666465.0, 16945494.0, 23205361.0, 33547140.0, 23739173.0, 19152630.0, 18866424.0, 27721351.0, 24918842.0, 20541487.0, 25581881.0, 18784226.0, 23123795.0, 20293014.0, 18650256.0, 26426061.0, 28576887.0, 27824052.0, 35376328.0, 72039993.0, 30105226.0, 26298574.0, 23878626.0, 31308476.0, 24433490.0, 21461849.0, 30753738.0, 26017488.0, 28144555.0, 21136716.0, 20309702.0, 26837196.0, 39545672.0, 31744404.0, 24852843.0, 20442123.0, 27747388.0, 23087287.0, 24357455.0, 44415846.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 300.52429543295, 298.88407682950003, 298.09375481585, 297.8174169741, 297.57249999185, 297.6565, 297.6115, 298.1255, 298.615, 299.29949999999997, 300.25100000000003, 301.6185, 302.9285, 304.345, 306.0725, 307.8935, 309.405, 311.84900000000005, 314.24699999999996, 317.421, 321.221, 325.03499999999997, 328.154, 332.5245, 337.02049999999997, 341.1835, 345.332, 349.368, 353.34299999999996, 357.521, 360.8875, 363.6095, 366.8845, 370.137, 372.892, 375.86800000000005, 378.6365, 381.116, 383.5545, 385.483, 387.40999999999997, 389.3625, 391.372, 391.149], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 325.24531817318, 326.8662307318, 328.85130192634, 330.81436678963996, 332.73659999674, 334.7092, 336.3352, 337.97259999999994, 339.5518, 341.1402, 342.8722, 344.5376, 346.1218, 347.57480000000004], "code": "US.GOOGL", "name": "Alphabet", "analyst": {"tgt_mean": 430.7213, "tgt_high": 515.0, "tgt_low": 340.0, "tgt_median": 430.0, "n_analyst": 53, "rec_key": "strong_buy", "rec_mean": 1.4375, "fwd_pe": 26.249208, "trail_pe": 28.989328, "eps_g": 0.82, "rev_g": 0.218, "margin": 0.37919, "beta": 1.267, "sector": "Communication Services", "industry": "Internet Content & Information"}, "news": [{"title": "Big Tech companies are screwing the average investor — here's how", "summary": "Time for some stock splits!", "url": "https://finance.yahoo.com/markets/article/big-tech-companies-are-screwing-the-average-investor--heres-how-123000495.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "IPOs are no longer Wall Street's starting line — they're the exit ramp: Chart of the Day", "summary": "Wall Street used to get the growth story early. Now it often only gets the receipt.", "url": "https://finance.yahoo.com/markets/article/ipos-are-no-longer-wall-streets-starting-line--theyre-the-exit-ramp-chart-of-the-day-114434009.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "Analysis-AI debt sales reshape global corporate bond markets", "summary": "From Europe to Japan and Switzerland, huge bond issues by Big Tech companies are proving that smaller markets, often overshadowed by the U.S., can punch above t", "url": "https://finance.yahoo.com/markets/stocks/articles/analysis-ai-debt-sales-reshape-050129222.html", "provider": "Reuters", "pub": "2026-06-01", "sent": -2}, {"title": "Dell Stock Is Impossible to Ignore Right Now. Here's What to Do With It.", "summary": "The technology company has shocked most investors, but the crowd may have also gotten a little ahead of itself.", "url": "https://www.fool.com/investing/2026/05/31/dell-stock-impossible-to-ignore-what-to-do-with-it/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 0}, {"title": "Dow Jones Futures, Oil Prices Rise As Trump Makes This Iran Move; Nvidia, Tesla Lead 5 Titans Near Buy Points", "summary": "Crude oil prices rose Sunday as President Trump reportedly stiffened Iran deal terms. Nvidia, Tesla lead five titans near buy points.", "url": "https://www.investors.com/market-trend/stock-market-today/dow-jones-futures-iran-hopes-nvidia-tesla-stocks-near-buy-points/?src=A00220&yptr=yahoo", "provider": "Investor's Business Daily", "pub": "2026-06-01", "sent": 1}, {"title": "A $3 Million Insurance Bet: What This Fund Might Be Seeing in Ryan Specialty Stock", "summary": "Ryan Specialty Holdings delivers tailored insurance solutions for brokers and carriers seeking specialized risk management expertise.", "url": "https://www.fool.com/coverage/filings/2026/05/31/a-usd3-million-insurance-bet-what-this-fund-might-be-seeing-in-ryan-specialty-stock/", "provider": "Motley Fool", "pub": "2026-05-31", "sent": -1}], "sent_avg": 0.0, "sent_label": "中性", "upside": 13.246384813587841, "pricing_logic": "53位分析师给出共识 [强烈买入] (评分 1.44/5, 越低越多头) · 目标价区间 $340 – $515，均价 $430.7 (+13.2% vs 现价) · 远期PE 26.2× vs 当前PE 29.0× → 估值持平 · 盈利同比 +82% / 营收 +22% / 净利率 38%"}, {"last": 632.51, "chg1d": -0.43759542885926095, "chg1w": 4.137442787052592, "chg1m": 3.366508146622871, "chg3m": -3.137960425307984, "hi3m": 691.52, "lo3m": 520.26, "pos_in_range": 65.54361789092607, "vol_today": 19806536.0, "vol_avg20": 15019140.8, "vol_ratio": 1.3187529342557331, "vol_annual": 40.092560428959814, "ma20": 613.325, "ma50": 618.5318, "bb_up": 634.068245190967, "bb_dn": 592.5817548090331, "bb_pos": 96.24396959920821, "rsi": 64.01617250673857, "macd_hist": 6.388123818595904, "atr": 13.498299999999988, "pe": 26.926, "pb": 6.588, "mcap": 1605578124013.04, "turnover": 12471836723.0, "score": 0.0, "signal": "中性", "color": "#94a3b8", "reasons": ["RSI=64 中性", "MACD 多头", "触及布林上轨"], "sug": {"sl_oneil": 588.2343000000001, "sl_atr": 605.5134, "sl_ma50": 618.5318, "sl_3m_lo": 592.6, "sl_final": 606.161164, "sl_pct": -4.165758011731036, "tp1": 759.012, "tp2": 948.765}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[636.614939566, 653.000910137, 633.957215071, 659.375452347], [647.735418374, 654.519609848, 638.293502405, 658.476222254], [657.397146144, 667.158788368, 657.108493284, 672.194476885], [661.363749995, 660.004913411, 649.753690359, 670.126247672], [647.345752001, 644.308352578, 635.565837792, 648.91440894], [634.236975544, 646.836188282, 626.243819168, 647.195880319], [653.000910137, 653.510473856, 648.444811003, 659.735144384], [654.199883593, 654.299798048, 647.805358492, 658.556153818], [648.195024866, 637.634067004, 636.355161984, 652.940961464], [623.356291427, 613.184999939, 609.028558623, 628.631674721], [632.0, 627.45, 623.1004, 634.75], [627.985, 622.66, 621.7, 636.55], [616.34, 615.68, 614.61, 622.65], [612.15, 606.7, 602.26, 613.0], [603.53, 593.66, 587.25, 603.955], [605.787, 604.06, 599.01, 608.64], [599.1, 592.92, 591.0, 601.0], [598.74, 594.89, 593.4, 603.67], [582.49, 547.54, 543.35, 583.0], [540.1, 525.72, 520.26, 543.5999], [536.38, 536.38, 528.54, 539.55], [549.98, 572.13, 546.77, 573.69], [580.13, 579.23, 573.82, 592.5465], [566.035, 574.46, 559.7, 578.5], [577.69, 573.02, 572.0, 582.79], [572.48, 575.05, 564.76, 575.225], [606.0, 612.42, 591.83, 629.95], [626.97, 628.39, 623.0, 637.5], [634.47, 629.86, 624.33, 638.58], [629.5, 634.53, 624.4, 635.0], [643.22, 662.49, 639.3705, 666.26], [667.0, 671.58, 664.22, 678.5], [675.99, 676.87, 667.75, 677.58], [678.6, 688.55, 675.13, 691.52], [681.36, 670.91, 668.0, 683.38], [671.0, 668.84, 667.33, 676.2], [674.355, 674.72, 669.75, 678.38], [663.7, 659.15, 653.05, 669.56], [660.32, 675.03, 653.8401, 680.67], [670.995, 678.62, 670.84, 682.5], [674.24, 671.34, 665.625, 678.18], [668.91, 669.12, 663.8084, 674.25], [619.32, 611.91, 600.0, 620.85], [614.69, 608.745, 606.11, 618.88], [607.935, 610.41, 602.7501, 614.0], [613.31, 604.96, 600.36, 614.35], [601.05, 612.88, 598.1, 619.95], [614.72, 616.81, 613.5401, 624.98], [615.2, 609.63, 606.0601, 616.77], [604.57, 598.86, 598.0801, 604.9069], [594.815, 603.0, 592.6, 603.745], [598.83, 616.63, 596.6601, 619.9], [616.0, 618.43, 615.0, 623.73], [613.99, 614.23, 609.31, 621.1999], [609.105, 611.21, 603.69, 615.59], [608.92, 602.61, 600.55, 613.93], [600.755, 605.06, 597.81, 608.0], [600.0, 607.38, 594.8083, 609.6], [607.88, 610.26, 606.95, 614.81], [608.89, 612.34, 605.3001, 614.47], [609.395, 635.255, 609.0, 638.4999], [639.495, 635.29, 629.31, 643.0], [633.5, 632.51, 623.35, 634.5]], "volumes": [9816125.0, 12263754.0, 10810054.0, 13341367.0, 13159356.0, 13489742.0, 9859250.0, 8977162.0, 11617485.0, 18957637.0, 15134852.0, 10348755.0, 11726301.0, 13247696.0, 21214898.0, 13637959.0, 10739742.0, 12585031.0, 35780131.0, 30133010.0, 22795203.0, 32898272.0, 23608128.0, 13518547.0, 9515651.0, 9580843.0, 32036638.0, 19012912.0, 13294844.0, 9538931.0, 17817956.0, 14952577.0, 9544835.0, 16283480.0, 12533951.0, 8660100.0, 9215603.0, 11666981.0, 13348279.0, 12805222.0, 10606755.0, 18947464.0, 52764984.0, 21404028.0, 16203902.0, 17171301.0, 19915460.0, 12307372.0, 13556963.0, 15940622.0, 11351559.0, 14634394.0, 10651173.0, 13272567.0, 13772443.0, 11749947.0, 11329709.0, 13476078.0, 11688623.0, 12234166.0, 23143594.0, 16772379.0, 19806536.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 620.78690507355, 614.9558595667, 610.8363790742999, 606.4399396559, 602.16269398535, 598.59827635645, 595.00896694235, 592.95444324955, 591.6589533471499, 591.2702499969499, 592.3375, 594.0894999999999, 596.5355, 599.595, 603.6875, 607.55, 610.789, 614.879, 618.0919999999999, 624.4665, 632.1115000000001, 638.8595, 643.7090000000001, 645.343, 647.0572500000001, 648.92675, 650.42225, 650.44525, 649.86625, 648.85475, 647.07125, 644.0967499999999, 641.34925, 638.42725, 634.7112500000001, 631.7262499999999, 628.41475, 624.93175, 622.3432500000001, 619.10475, 615.7907499999999, 613.9865, 612.295, 613.325], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 625.45266202942, 624.45264382668, 623.69485162972, 622.72027586236, 621.80477759414, 621.14281054258, 620.2582867769399, 619.28927729982, 618.35088133886, 617.80339999878, 617.7865, 617.9426, 618.1952, 618.5318], "code": "US.META", "name": "Meta", "analyst": {"tgt_mean": 826.74713, "tgt_high": 1015.0, "tgt_low": 614.0, "tgt_median": 825.0, "n_analyst": 59, "rec_key": "strong_buy", "rec_mean": 1.34375, "fwd_pe": 17.490955, "trail_pe": 22.992002, "eps_g": 0.624, "rev_g": 0.331, "margin": 0.32837, "beta": 1.243, "sector": "Communication Services", "industry": "Internet Content & Information"}, "news": [{"title": "IPOs are no longer Wall Street's starting line — they're the exit ramp: Chart of the Day", "summary": "Wall Street used to get the growth story early. Now it often only gets the receipt.", "url": "https://finance.yahoo.com/markets/article/ipos-are-no-longer-wall-streets-starting-line--theyre-the-exit-ramp-chart-of-the-day-114434009.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "China toughens rules on outbound investment after Meta-Manus contention", "summary": "BEIJING, June 1 (Reuters) - China issued sweeping new rules on Monday, widening regulators' powers to scrutinise overseas deals involving Chinese investors, tec", "url": "https://finance.yahoo.com/economy/policy/articles/china-toughens-rules-outbound-investment-023356554.html", "provider": "Reuters", "pub": "2026-06-01", "sent": -1}, {"title": "China expands curbs on foreign deals, tech transfer after Meta-Manus block", "summary": "China issued sweeping new rules on Monday tightening control of overseas deals that involve Chinese investors, technology, data and national security, a month a", "url": "https://finance.yahoo.com/economy/policy/articles/china-toughens-rules-outbound-investment-023356324.html", "provider": "Reuters", "pub": "2026-06-01", "sent": 1}, {"title": "Meta Faces Digital Services Act Scrutiny On Financial Scam Controls", "summary": "European consumer groups have filed coordinated complaints under the Digital Services Act against Meta Platforms, alleging insufficient action to curb financial", "url": "https://finance.yahoo.com/markets/stocks/articles/meta-faces-digital-services-act-020417945.html", "provider": "Simply Wall St.", "pub": "2026-06-01", "sent": 0}, {"title": "Corning Incorporated (GLW): Leopold Aschenbrenner Discloses New Holding", "summary": "We just covered the From Fired Researcher to $13.7 Billion King: How Leopold Aschenbrenner Broke the Hedge Fund World and Corning Incorporated (NYSE:GLW) ranks ", "url": "https://finance.yahoo.com/markets/stocks/articles/corning-incorporated-glw-leopold-aschenbrenner-205513332.html", "provider": "Insider Monkey", "pub": "2026-05-31", "sent": 0}, {"title": "Meta's Subscription Push Could Add $13.5 Billion By 2028 Across Instagram, Facebook, WhatsApp", "summary": "Meta Platforms Inc is expanding beyond its advertising roots by introducing paid subscriptions across Instagram, Facebook, WhatsApp, and Meta AI as the company ", "url": "https://finance.yahoo.com/markets/stocks/articles/metas-subscription-push-could-add-193314864.html", "provider": "Benzinga", "pub": "2026-05-31", "sent": 1}], "sent_avg": 0.33, "sent_label": "中性", "upside": 30.70894215111224, "pricing_logic": "59位分析师给出共识 [强烈买入] (评分 1.34/5, 越低越多头) · 目标价区间 $614 – $1015，均价 $826.7 (+30.7% vs 现价) · 远期PE 17.5× vs 当前PE 23.0× → 估值消化(盈利增长快于股价) · 盈利同比 +62% / 营收 +33% / 净利率 33%"}, {"last": 270.64, "chg1d": -1.226277372262774, "chg1w": 0.8120390374730002, "chg1m": 2.105183731985205, "chg3m": 29.87187485004079, "hi3m": 278.56, "lo3m": 199.14, "pos_in_range": 90.02770083102492, "vol_today": 54749561.0, "vol_avg20": 39514472.65, "vol_ratio": 1.3855571725566227, "vol_annual": 28.45646476186693, "ma20": 268.73850000000004, "ma50": 246.6696, "bb_up": 276.75058633056517, "bb_dn": 260.7264136694349, "bb_pos": 61.86644727445055, "rsi": 47.86432160804018, "macd_hist": -2.0969222620859416, "atr": 6.42355000000001, "pe": 37.746, "pb": 6.587, "mcap": 2911304097759.04, "turnover": 14851936294.0, "score": 0.5, "signal": "中性", "color": "#94a3b8", "reasons": ["RSI=48 中性", "MACD 空头", "均线多头排列"], "sug": {"sl_oneil": 251.6952, "sl_atr": 257.7929, "sl_ma50": 246.6696, "sl_3m_lo": 255.19, "sl_final": 257.7929, "sl_pct": -4.7469331953887135, "tp1": 324.768, "tp2": 405.96}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[204.55, 208.39, 203.46, 209.73], [203.1, 208.73, 202.48, 209.178], [210.47, 216.82, 210.15, 217.54], [215.98, 218.94, 215.59, 220.47], [214.99, 213.21, 212.53, 217.32], [210.45, 213.49, 207.11, 213.82], [214.19, 214.33, 212.43, 215.65], [215.705, 212.65, 211.35, 217.0], [210.39, 209.53, 208.15, 211.71], [209.605, 207.67, 206.22, 210.56], [208.35, 211.74, 207.445, 212.724], [212.82, 215.2, 212.43, 215.7], [213.925, 209.87, 208.825, 215.1401], [207.06, 208.76, 206.05, 209.12], [207.4, 205.37, 204.316, 207.54], [209.79, 210.14, 209.51, 212.8], [207.95, 207.24, 206.64, 209.35], [211.56, 211.71, 209.9, 213.07], [210.61, 207.54, 207.12, 212.885], [206.455, 199.34, 199.14, 206.6], [201.48, 200.95, 199.9802, 203.8], [204.845, 208.27, 204.14, 210.28], [210.435, 210.57, 208.19, 213.58], [206.54, 209.77, 204.9, 212.2125], [209.795, 212.79, 209.59, 212.95], [211.24, 213.77, 209.075, 213.97], [223.79, 221.25, 219.62, 226.1], [225.232, 233.65, 223.27, 233.8], [235.295, 238.38, 235.21, 240.43], [237.45, 239.89, 235.75, 240.0], [241.78, 249.02, 241.78, 252.18], [249.25, 248.5, 247.2, 250.44], [248.51, 249.7, 244.2, 250.0], [254.985, 250.56, 250.11, 256.18], [249.19, 248.28, 245.365, 250.18], [255.09, 249.91, 249.1, 255.09], [252.44, 255.36, 250.33, 255.94], [255.39, 255.08, 253.07, 258.79], [259.98, 263.99, 257.685, 264.5], [263.46, 261.12, 260.34, 264.15], [258.39, 259.7, 256.63, 261.03], [257.99, 263.04, 257.7, 265.91], [273.17, 265.06, 256.16, 273.88], [265.58, 268.26, 262.74, 273.315], [268.795, 272.05, 268.795, 276.1], [276.075, 273.55, 272.38, 278.56], [272.89, 274.99, 272.2076, 277.8], [275.02, 271.17, 270.49, 276.63], [271.63, 272.68, 269.95, 274.0], [269.835, 268.99, 268.48, 273.63], [266.71, 265.82, 262.63, 267.65], [264.43, 270.13, 263.2, 270.72], [269.15, 267.22, 266.63, 270.7799], [262.5, 264.14, 260.8901, 264.355], [263.865, 264.86, 262.53, 268.85], [262.04, 259.34, 255.19, 262.25], [260.05, 265.01, 259.533, 265.58], [263.5, 268.46, 261.37, 269.4899], [268.655, 266.32, 266.235, 269.785], [267.94, 265.29, 262.07, 269.3], [266.15, 271.85, 265.7001, 272.41], [272.27, 274.0, 267.44, 274.5], [271.29, 270.64, 269.64, 274.75]], "volumes": [46001010.0, 43184918.0, 54731101.0, 60943447.0, 51152716.0, 54642926.0, 35678834.0, 34199303.0, 44349501.0, 35662137.0, 42209316.0, 44969943.0, 37846642.0, 36440622.0, 63694603.0, 44277356.0, 35351425.0, 36388791.0, 46745978.0, 56009763.0, 46373797.0, 58470078.0, 45955395.0, 31453039.0, 25385495.0, 28154557.0, 51092698.0, 65964171.0, 56912842.0, 42166150.0, 72685026.0, 43045160.0, 41895711.0, 52029291.0, 39463106.0, 42922398.0, 36065067.0, 39091394.0, 53777353.0, 44906840.0, 42204447.0, 72367910.0, 100974867.0, 50825231.0, 49083734.0, 41908529.0, 44551955.0, 35892879.0, 34732681.0, 38176696.0, 36776221.0, 39670915.0, 31338435.0, 40770344.0, 33690787.0, 40340697.0, 34933152.0, 36591743.0, 27535526.0, 38028118.0, 40061864.0, 40630385.0, 54749561.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 210.5335, 210.16150000000002, 210.13850000000002, 209.82599999999996, 209.36749999999998, 209.34650000000002, 209.3605, 209.7065, 210.75650000000002, 212.19899999999998, 213.81, 215.67399999999998, 217.339, 219.33050000000003, 221.4205, 223.56599999999997, 225.55450000000002, 227.9605, 230.129, 232.95149999999998, 236.04049999999998, 238.978, 241.7165, 244.44099999999997, 247.36550000000003, 250.32850000000002, 253.31750000000002, 256.0045, 257.88050000000004, 259.5955, 261.0505, 261.89050000000003, 262.97200000000004, 263.848, 264.527, 265.35600000000005, 265.8275, 266.31, 266.979, 267.0955, 267.30400000000003, 267.9115, 268.4595, 268.73850000000004], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 232.4194, 233.56800000000004, 234.796, 235.80399999999997, 236.70800000000003, 237.74099999999999, 238.658, 239.6716, 240.78780000000003, 241.9236, 243.076, 244.2782, 245.4542, 246.6696], "code": "US.AMZN", "name": "Amazon", "analyst": {"tgt_mean": 312.7934, "tgt_high": 370.0, "tgt_low": 207.0, "tgt_median": 319.5, "n_analyst": 62, "rec_key": "strong_buy", "rec_mean": 1.34848, "fwd_pe": 27.443575, "trail_pe": 31.653803, "eps_g": 0.748, "rev_g": 0.166, "margin": 0.12224, "beta": 1.468, "sector": "Consumer Cyclical", "industry": "Internet Retail"}, "news": [{"title": "IPOs are no longer Wall Street's starting line — they're the exit ramp: Chart of the Day", "summary": "Wall Street used to get the growth story early. Now it often only gets the receipt.", "url": "https://finance.yahoo.com/markets/article/ipos-are-no-longer-wall-streets-starting-line--theyre-the-exit-ramp-chart-of-the-day-114434009.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "Is It Too Late To Consider Amazoncom (AMZN) After Its Strong Multi Year Rally?", "summary": "Wondering if Amazon.com at US$270.64 is still a good entry point or if most of the value is already priced in? This article focuses squarely on what the current", "url": "https://finance.yahoo.com/markets/stocks/articles/too-consider-amazoncom-amzn-strong-081344130.html", "provider": "Simply Wall St.", "pub": "2026-06-01", "sent": 2}, {"title": "Citi is Bullish on SPS Commerce, Inc. (SPSC)", "summary": "SPS Commerce, Inc. (NASDAQ:SPSC) is among the Best Russell 2000 Stocks. On May 4, Citi lowered its price target on SPS Commerce, Inc. (NASDAQ:SPSC) to $76 from ", "url": "https://finance.yahoo.com/markets/stocks/articles/citi-bullish-sps-commerce-inc-080245670.html", "provider": "Insider Monkey", "pub": "2026-06-01", "sent": 0}, {"title": "TSLA Stock Slips Overnight: SpaceX IPO Hype Is Starting To Look Like Amazon's Dot-Com Bubble Peak In 2000, Warns Ex-Lehman Trader", "summary": "McDonald said a $2 trillion valuation for SpaceX leaves little room for Tesla-like returns.", "url": "https://stocktwits.com/news-articles/markets/equity/tsla-stock-spacex-ipo-dotcom-bubble-warning/cZ0g1ZMReuA", "provider": "Stocktwits", "pub": "2026-06-01", "sent": 0}, {"title": "SpaceX’s IPO Could Test the Stock Market Rally", "summary": "The biggest IPO in history could force investors to make room for SpaceX just as the stock market rally faces new pressure.", "url": "https://www.barrons.com/articles/spacex-ipo-stock-market-top-b3e080aa?siteid=yhoof2&yptr=yahoo", "provider": "Barrons.com", "pub": "2026-06-01", "sent": 1}, {"title": "Analysis-AI debt sales reshape global corporate bond markets", "summary": "From Europe to Japan and Switzerland, huge bond issues by Big Tech companies are proving that smaller markets, often overshadowed by the U.S., can punch above t", "url": "https://finance.yahoo.com/markets/stocks/articles/analysis-ai-debt-sales-reshape-050129222.html", "provider": "Reuters", "pub": "2026-06-01", "sent": -2}], "sent_avg": 0.33, "sent_label": "中性", "upside": 15.575450783328426, "pricing_logic": "62位分析师给出共识 [强烈买入] (评分 1.35/5, 越低越多头) · 目标价区间 $207 – $370，均价 $312.8 (+15.6% vs 现价) · 远期PE 27.4× vs 当前PE 31.7× → 估值持平 · 盈利同比 +75% / 营收 +17% / 净利率 12%"}, {"last": 312.06, "chg1d": -0.1439953921474446, "chg1w": 2.3181087904521336, "chg1m": 15.108721190538787, "chg3m": 17.991657204086707, "hi3m": 315.0, "lo3m": 245.284008781, "pos_in_range": 95.78289005349644, "vol_today": 70026752.0, "vol_avg20": 49064319.3, "vol_ratio": 1.4272439320278107, "vol_annual": 20.734125575803056, "ma20": 297.46282420075, "ma50": 275.10928545478, "bb_up": 318.72048994996834, "bb_dn": 276.20515845153164, "bb_pos": 84.33391034428782, "rsi": 84.2769569150424, "macd_hist": 1.2177700296126766, "atr": 4.965714285714284, "pe": 41.831, "pb": 43.036, "mcap": 4583336313360.0, "turnover": 21846708884.0, "score": 0.5, "signal": "中性", "color": "#94a3b8", "reasons": ["RSI=84 超买", "MACD 多头", "均线多头排列"], "sug": {"sl_oneil": 290.2158, "sl_atr": 302.12857142857143, "sl_ma50": 275.10928545478, "sl_3m_lo": 274.607092102, "sl_final": 302.12857142857143, "sl_pct": -3.1825381565816047, "tp1": 374.472, "tp2": 468.09000000000003}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[262.168452382, 264.476326034, 259.96048668, 266.284659934], [263.23746745, 263.507218916, 259.890551115, 265.315552816], [264.406390468, 262.278351127, 261.179363674, 265.905009723], [260.549943587, 260.050403835, 257.013202146, 261.314239407], [258.39193186, 257.223008842, 254.135853178, 258.531802991], [255.454638122, 259.640781239, 253.44698786, 260.909612208], [257.40783855, 260.589906767, 256.713478295, 262.238387947], [260.849667438, 260.569925177, 259.311085003, 261.888710121], [258.421904245, 255.524573687, 253.946028072, 258.711637301], [255.244831426, 249.88976529, 249.290317588, 256.094049003], [251.872938103, 252.587279948, 249.649986209, 253.651299619], [252.722155681, 253.995982047, 251.947869066, 254.8951536], [252.392459445, 249.709930979, 248.770796247, 254.705328494], [249.170428048, 248.730833066, 247.072361091, 251.59819124], [247.746739756, 247.761725948, 245.773557738, 248.970512239], [253.736221376, 251.258504209, 250.04961801, 254.365641463], [250.119553576, 251.408366134, 249.320289973, 254.590434351], [253.861106314, 252.387464047, 251.368402954, 254.765273265], [251.882928898, 252.657215513, 250.539166967, 256.763432271], [253.666285811, 248.570980346, 247.841652309, 255.257819459], [249.839811315, 246.402977824, 245.284008781, 250.639074917], [247.681799588, 253.556387066, 246.87354427, 255.244831426], [253.846120122, 255.394693351, 253.096810494, 255.944187078], [253.966009662, 255.684426407, 250.419277426, 255.894233103], [256.273883314, 258.621720146, 256.223929339, 261.918682506], [255.91921009, 253.26665401, 245.473833887, 255.964168668], [258.21209755, 258.661683326, 256.293864904, 259.510800996], [258.761591277, 260.250219736, 255.834288333, 260.879639823], [259.740689189, 260.240228941, 258.784692992, 261.948654891], [259.490919314, 258.961407177, 256.423745239, 259.94050509], [259.006365755, 258.591747761, 256.953257376, 261.68889422], [257.922364494, 266.184751984, 257.572686668, 266.314632319], [266.5544114, 263.15754109, 261.029501748, 266.914080021], [266.71426412, 269.981254095, 266.47448504, 272.049348666], [270.081162045, 272.798658294, 270.041198865, 274.022530685], [271.250085064, 265.924991313, 265.155700096, 272.548888418], [267.573472493, 272.918547834, 266.624346965, 273.488023151], [274.791821902, 273.178308505, 271.399946989, 275.516154542], [272.50392984, 270.810490083, 269.401787983, 272.808649089], [265.845064953, 267.363665797, 264.82600386, 268.112975425], [272.084316449, 270.460812257, 268.412699275, 272.978492604], [267.303721027, 269.921309325, 266.794190481, 270.790508493], [270.251005561, 271.100223139, 267.893177934, 275.745942828], [278.598314809, 279.88213197, 278.11376125, 286.955614851], [279.397578411, 276.575178815, 274.607092102, 280.371680926], [276.670091368, 283.918413162, 276.246481659, 284.308054168], [281.655498088, 287.245347907, 280.811275908, 287.764869249], [289.003727832, 287.175412342, 285.516940367, 291.861095211], [289.743046665, 293.049999819, 289.73305587, 294.488674304], [291.979, 292.68, 290.23, 293.88], [292.56, 294.8, 292.56, 295.27], [293.5, 298.87, 293.5, 300.92], [299.82, 298.21, 295.38, 300.45], [297.9, 300.23, 296.52, 303.2], [300.24, 297.84, 294.91, 300.66], [296.97, 298.97, 296.35, 300.51], [298.18, 302.25, 298.08, 302.8], [301.055, 304.99, 300.4, 305.54], [306.12, 308.82, 305.84, 311.4], [309.56, 308.33, 307.67, 311.82], [308.33, 310.85, 308.3, 313.26], [310.68, 312.51, 309.57, 312.8], [311.775, 312.06, 309.53, 315.0]], "volumes": [41827946.0, 38568921.0, 39803119.0, 49658626.0, 41120042.0, 38218533.0, 30590765.0, 26218927.0, 40794020.0, 36929988.0, 32074209.0, 32361607.0, 35757874.0, 34864082.0, 88331081.0, 40546109.0, 45152288.0, 28476668.0, 41796650.0, 47899998.0, 39446213.0, 49598091.0, 40059432.0, 31289369.0, 29329911.0, 62148008.0, 41032772.0, 28121574.0, 31291473.0, 36234698.0, 48370710.0, 49913510.0, 43323112.0, 61436228.0, 36590169.0, 50209755.0, 43249204.0, 33399639.0, 38157110.0, 41466762.0, 40018940.0, 30047869.0, 91848230.0, 79915442.0, 46668401.0, 49311712.0, 58336072.0, 45224300.0, 52692761.0, 42247285.0, 45748129.0, 52684260.0, 35324922.0, 54862836.0, 34482959.0, 42243561.0, 38229843.0, 42965126.0, 43670223.0, 48000493.0, 50430919.0, 48220390.0, 70026752.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 255.14092715755, 254.23725974705002, 253.73971815455002, 253.39553526575, 253.17723639435002, 253.24717195955, 252.92846559809996, 252.83205442604998, 252.816069154, 253.05185191670003, 253.50543401105, 253.8056574017, 254.41509589855, 255.08747640410002, 256.14999745555, 257.40184407285, 258.13516842804995, 259.21067751305003, 260.25021973595005, 261.15788346445004, 262.097517737, 263.30040945865, 264.1186555716, 264.90393206100003, 266.11381733915, 267.01149027260004, 268.5440782302, 269.97326145925, 271.31952108955, 272.96000963345, 274.6459392746, 276.45635188654995, 278.09061428735004, 279.84323723284996, 281.3556745281, 282.6077416134, 284.25999204774996, 285.72656465604996, 287.31714923080006, 289.21762472665, 291.2659414368, 293.28540082395, 295.41483535770004, 297.46282420075], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 263.13555453254, 263.74202801186, 264.44928363354, 265.167916611, 265.97150853429997, 266.78384835746, 267.57043273268005, 268.40363459734004, 269.2920360938, 270.35794462006, 271.52674931426003, 272.6920037153, 273.86228407436, 275.10928545478], "code": "US.AAPL", "name": "Apple", "analyst": {"tgt_mean": 310.507, "tgt_high": 400.0, "tgt_low": 215.0, "tgt_median": 310.0, "n_analyst": 43, "rec_key": "buy", "rec_mean": 1.97917, "fwd_pe": 32.479454, "trail_pe": 37.733974, "eps_g": 0.218, "rev_g": 0.166, "margin": 0.27152002, "beta": 1.065, "sector": "Technology", "industry": "Consumer Electronics"}, "news": [{"title": "IPOs are no longer Wall Street's starting line — they're the exit ramp: Chart of the Day", "summary": "Wall Street used to get the growth story early. Now it often only gets the receipt.", "url": "https://finance.yahoo.com/markets/article/ipos-are-no-longer-wall-streets-starting-line--theyre-the-exit-ramp-chart-of-the-day-114434009.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "Nvidia Enters Windows Laptop Market, Taking On Intel and AMD", "summary": "(Bloomberg) -- Nvidia Corp. is entering the PC market with a new chip aimed at loosening the stranglehold of Intel Corp. technology in that arena and modernizin", "url": "https://finance.yahoo.com/news/nvidia-enters-windows-laptop-market-taking-on-intel-and-amd-042523139.html", "provider": "Bloomberg", "pub": "2026-06-01", "sent": 1}, {"title": "Dell unveils XPS 13 laptop to compete with Apple’s MacBook Neo, Reuters says", "summary": "Dell (DELL) unveiled the XPS 13, a laptop meant to compete with Apple’s (AAPL) MacBook Neo, Jaspreet Singh of Reuters reports. The laptop is priced at $699 and ", "url": "https://finance.yahoo.com/markets/stocks/articles/dell-unveils-xps-13-laptop-080508009.html", "provider": "TipRanks", "pub": "2026-06-01", "sent": 3}, {"title": "DELL vs AAPL: Analysts See Upside for One, and Downside for the Other", "summary": "Dell (DELL) and Apple (AAPL) are both AI hardware stories, but they are very different stocks right now. Dell is the cleaner near-term AI infrastructure winner,", "url": "https://finance.yahoo.com/markets/stocks/articles/dell-vs-aapl-analysts-see-033500497.html", "provider": "TipRanks", "pub": "2026-06-01", "sent": 2}, {"title": "Dell unveils $699 XPS 13 laptop in challenge to Apple's MacBook Neo", "summary": "Dell on Sunday unveiled its most affordable laptop, XPS 13, as the PC maker aims to capture ‌market share from Apple's MacBook Neo by attracting students and yo", "url": "https://finance.yahoo.com/sectors/technology/articles/dell-unveils-699-xps-13-225306337.html", "provider": "Reuters", "pub": "2026-05-31", "sent": 2}, {"title": "Why This Fund Sold $35 Million of Bristow Group Amid a 40% Stock Surge", "summary": "Bristow Group delivers aviation and mission-critical transport services to offshore energy, government, and commercial clients worldwide.", "url": "https://www.fool.com/coverage/filings/2026/05/31/why-this-fund-sold-usd35-million-of-bristow-group-amid-a-40-stock-surge/", "provider": "Motley Fool", "pub": "2026-05-31", "sent": 0}], "sent_avg": 1.5, "sent_label": "看多", "upside": -0.4976607062744387, "pricing_logic": "43位分析师给出共识 [买入] (评分 1.98/5, 越低越多头) · 目标价区间 $215 – $400，均价 $310.5 (-0.5% vs 现价) · 远期PE 32.5× vs 当前PE 37.7× → 估值持平 · 盈利同比 +22% / 营收 +17% / 净利率 27%"}, {"last": 435.79, "chg1d": -1.4272788961773308, "chg1w": 4.293406724901283, "chg1m": 14.191756413279876, "chg3m": 8.050679361301217, "hi3m": 453.4, "lo3m": 337.24, "pos_in_range": 84.83987603305788, "vol_today": 45176821.0, "vol_avg20": 52580980.95, "vol_ratio": 0.859185587331649, "vol_annual": 40.44802409870904, "ma20": 421.3945, "ma50": 391.795, "bb_up": 459.30379200077476, "bb_dn": 383.4852079992252, "bb_pos": 68.98676978681878, "rsi": 52.96461587503984, "macd_hist": 1.2894544791375324, "atr": 16.45428571428572, "pe": 403.509, "pb": 19.457, "mcap": 1636706905743.09, "turnover": 19672951610.0, "score": 1.5, "signal": "买入", "color": "#22c55e", "reasons": ["RSI=53 中性", "MACD 多头", "均线多头排列"], "sug": {"sl_oneil": 405.28470000000004, "sl_atr": 402.88142857142856, "sl_ma50": 391.795, "sl_3m_lo": 378.8, "sl_final": 405.28470000000004, "sl_pct": -6.999999999999995, "tp1": 522.948, "tp2": 653.6850000000001}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[390.6, 403.32, 388.25, 404.54], [395.09, 392.43, 385.39, 396.34], [397.845, 405.94, 394.58, 408.33], [401.57, 405.55, 399.42, 408.62], [398.09, 396.73, 394.21, 402.35], [390.05, 398.68, 381.4, 401.59], [402.22, 399.235, 398.19, 406.59], [402.28, 407.82, 402.15, 416.3799], [405.175, 395.01, 394.65, 406.5], [399.165, 391.2, 389.95, 400.2], [396.22, 395.56, 394.42, 403.73], [395.69, 399.27, 393.0, 400.12], [399.0, 392.78, 392.31, 403.065], [387.27, 380.3, 378.73, 387.27], [379.85, 367.96, 364.4601, 379.89], [373.09, 380.85, 372.73, 385.33], [376.56, 383.03, 376.31, 387.48], [389.99, 385.95, 385.01, 396.23], [381.6, 372.11, 371.87, 384.44], [369.69, 361.83, 359.47, 369.86], [365.86, 355.28, 352.14, 367.29], [361.51, 371.75, 361.0, 373.33], [378.63, 381.26, 374.08, 383.14], [364.195, 360.59, 359.03, 370.28], [362.59, 352.82, 346.64, 367.72], [346.44, 346.65, 337.24, 348.02], [363.79, 343.25, 339.67, 364.5], [343.15, 345.62, 337.25, 348.88], [346.285, 348.95, 342.74, 350.36], [350.065, 352.42, 348.57, 356.35], [357.67, 364.2, 354.77, 367.63], [366.83, 391.95, 362.5, 394.65], [393.81, 388.9, 381.8, 394.06], [395.92, 400.62, 391.65, 409.28], [402.58, 392.5, 388.33, 406.8], [393.0, 386.42, 385.2201, 393.95], [387.57, 387.51, 385.3, 393.01], [375.28, 373.72, 368.39, 386.0], [373.5, 376.3, 370.73, 382.76], [372.09, 378.67, 364.02, 380.78], [374.675, 376.02, 372.54, 382.29], [375.4, 372.8, 370.04, 376.4], [372.75, 381.63, 368.17, 384.75], [382.485, 390.82, 378.8, 397.8211], [390.23, 392.51, 384.8004, 394.64], [395.185, 389.37, 389.0, 402.12], [386.25, 398.73, 384.02, 401.68], [407.48, 411.79, 402.12, 415.83], [416.475, 428.35, 416.39, 431.2], [422.16, 445.0, 416.8, 449.16], [441.41, 433.45, 422.26, 447.8], [436.665, 445.27, 430.21, 453.4], [446.49, 443.3, 441.16, 451.98], [433.98, 422.24, 422.0, 434.66], [419.27, 409.99, 405.33, 421.13], [403.16, 404.11, 393.63, 405.63], [407.6, 417.26, 406.39, 417.46], [422.175, 417.85, 412.9, 426.95], [422.665, 426.01, 420.51, 431.51], [430.26, 433.59, 426.12, 435.2], [442.89, 440.36, 435.52, 445.6], [437.615, 442.1, 436.3, 443.96], [439.845, 435.79, 428.14, 441.07]], "volumes": [55088338.0, 62617298.0, 68305513.0, 51925898.0, 64054561.0, 67018911.0, 59258743.0, 62559930.0, 60973793.0, 58504091.0, 58068343.0, 46890467.0, 50853149.0, 67078259.0, 78628603.0, 74606049.0, 60004909.0, 55157265.0, 55522879.0, 62065659.0, 67954405.0, 75534934.0, 58683752.0, 83031226.0, 77697643.0, 74515355.0, 78838616.0, 62164016.0, 51336034.0, 53617477.0, 59979607.0, 113810355.0, 63515136.0, 90640032.0, 64603868.0, 50530611.0, 62362785.0, 93969510.0, 62893307.0, 66735816.0, 50864357.0, 45384836.0, 51076041.0, 65338257.0, 48765143.0, 47780631.0, 53465365.0, 64294224.0, 65049970.0, 78376127.0, 60569303.0, 68283229.0, 46070361.0, 52688742.0, 52474188.0, 46500551.0, 45294745.0, 42636854.0, 46104710.0, 45658897.0, 44656505.0, 32434996.0, 45176821.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 390.77775, 388.37575000000004, 387.34175, 386.10775, 383.85974999999996, 381.66425, 379.06275, 376.26349999999996, 373.1535, 370.85049999999995, 368.9115, 367.3435, 366.9775, 366.7835, 367.79949999999997, 369.0265, 369.30499999999995, 369.529, 368.9175, 369.12699999999995, 369.96899999999994, 371.006, 371.0585, 371.077, 372.5885, 374.573, 376.709, 379.483, 382.7915, 386.7615, 391.39050000000003, 394.85299999999995, 397.519, 400.23900000000003, 401.32000000000005, 402.1945, 403.079, 404.5665, 406.773, 409.2585, 412.0045, 415.2215, 418.68649999999997, 421.3945], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 384.0391, 384.64169999999996, 385.69849999999997, 386.4457, 386.7795, 387.04470000000003, 387.15329999999994, 387.51380000000006, 387.71439999999996, 388.3344, 389.1822, 390.0782, 390.93480000000005, 391.795], "code": "US.TSLA", "name": "Tesla", "analyst": {"tgt_mean": 411.8878, "tgt_high": 600.0, "tgt_low": 123.0, "tgt_median": 450.0, "n_analyst": 41, "rec_key": "buy", "rec_mean": 2.3617, "fwd_pe": 173.64296, "trail_pe": 399.80734, "eps_g": 0.083, "rev_g": 0.158, "margin": 0.03946, "beta": 1.793, "sector": "Consumer Cyclical", "industry": "Auto Manufacturers"}, "news": [{"title": "IPOs are no longer Wall Street's starting line — they're the exit ramp: Chart of the Day", "summary": "Wall Street used to get the growth story early. Now it often only gets the receipt.", "url": "https://finance.yahoo.com/markets/article/ipos-are-no-longer-wall-streets-starting-line--theyre-the-exit-ramp-chart-of-the-day-114434009.html", "provider": "Yahoo Finance", "pub": "2026-05-31", "sent": 1}, {"title": "Could SpaceX IPO Be Bad News for Tesla Investors?", "summary": "For years, Tesla dominated Elon Musk's growth narrative. But SpaceX may soon compete for investor attention, capital, and excitement.", "url": "https://www.fool.com/investing/2026/06/01/could-spacex-ipo-be-bad-news-for-tesla-investors/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 1}, {"title": "Nasdaq, S&P 500 Futures Open June On Strong Footing: Why NVDA, DELL, HPE, TSM, TSLA, SPCE, RVMD Are In Focus", "summary": "Data from Stocktwits shows that retail sentiment has held at ‘bullish’ on SPY, but sits at a cautious ‘neutral’ on QQQ.", "url": "https://stocktwits.com/news-articles/markets/equity/nasdaq-sp500-futures-rise-ai-trade-nvda-dell-spce-hpe-rvmd-stocks-to-watch/cZ0gZXjReHb", "provider": "Stocktwits", "pub": "2026-06-01", "sent": 2}, {"title": "TSLA Stock Slips Overnight: SpaceX IPO Hype Is Starting To Look Like Amazon's Dot-Com Bubble Peak In 2000, Warns Ex-Lehman Trader", "summary": "McDonald said a $2 trillion valuation for SpaceX leaves little room for Tesla-like returns.", "url": "https://stocktwits.com/news-articles/markets/equity/tsla-stock-spacex-ipo-dotcom-bubble-warning/cZ0g1ZMReuA", "provider": "Stocktwits", "pub": "2026-06-01", "sent": 0}, {"title": "Why a Tesla and SpaceX Merger Would Not Be Great News for Tesla Shareholders", "summary": "The SpaceX initial public offering is exciting, but Tesla investors shouldn't welcome the idea of a future merger between the two companies.", "url": "https://www.fool.com/investing/2026/06/01/why-a-tesla-and-spacex-merger-would-not-be-great-n/", "provider": "Motley Fool", "pub": "2026-06-01", "sent": 0}, {"title": "Tesla Backs Off Threat to Cancel Australian Graphite Supply Agreement, Syrah Stock Pops Over 23%", "summary": "Tesla (NASDAQ:TSLA) on Monday backed away from terminating its supply deal with Australia’s Syrah Resources after the graphite producer demonstrated progress in", "url": "https://finance.yahoo.com/markets/stocks/articles/tesla-backs-off-threat-cancel-040842902.html", "provider": "Benzinga", "pub": "2026-06-01", "sent": -1}], "sent_avg": 0.5, "sent_label": "看多", "upside": -5.484797723674239, "pricing_logic": "41位分析师给出共识 [买入] (评分 2.36/5, 越低越多头) · 目标价区间 $123 – $600，均价 $411.9 (-5.5% vs 现价) · 远期PE 173.6× vs 当前PE 399.8× → 估值消化(盈利增长快于股价) · 盈利同比 +8% / 营收 +16% / 净利率 4%"}, {"last": 124.37, "chg1d": 14.384254575554124, "chg1w": 24.756745912328213, "chg1m": 40.83342769788245, "chg3m": 13.662950100530068, "hi3m": 126.67, "lo3m": 81.24, "pos_in_range": 94.9372661237068, "vol_today": 68243445.0, "vol_avg20": 30795148.85, "vol_ratio": 2.2160453041616, "vol_annual": 73.44877129773943, "ma20": 97.379, "ma50": 97.6382, "bb_up": 115.08248273794266, "bb_dn": 79.67551726205735, "bb_pos": 126.23076317676198, "rsi": 79.1703287045175, "macd_hist": 5.527109568227207, "atr": 6.762107142857142, "pe": 74.473, "pb": 10.936, "mcap": 128263775960.0, "turnover": 8332081976.0, "score": -0.5, "signal": "中性", "color": "#94a3b8", "reasons": ["RSI=79 超买", "MACD 多头", "触及布林上轨", "放量上涨 (2.2×)"], "sug": {"sl_oneil": 115.6641, "sl_atr": 110.84578571428573, "sl_ma50": 97.6382, "sl_3m_lo": 85.44, "sl_final": 115.6641, "sl_pct": -6.999999999999995, "tp1": 149.244, "tp2": 186.555}, "dates": ["03-02", "03-03", "03-04", "03-05", "03-06", "03-09", "03-10", "03-11", "03-12", "03-13", "03-16", "03-17", "03-18", "03-19", "03-20", "03-23", "03-24", "03-25", "03-26", "03-27", "03-30", "03-31", "04-01", "04-02", "04-06", "04-07", "04-08", "04-09", "04-10", "04-13", "04-14", "04-15", "04-16", "04-17", "04-20", "04-21", "04-22", "04-23", "04-24", "04-27", "04-28", "04-29", "04-30", "05-01", "05-04", "05-05", "05-06", "05-07", "05-08", "05-11", "05-12", "05-13", "05-14", "05-15", "05-18", "05-19", "05-20", "05-21", "05-22", "05-26", "05-27", "05-28", "05-29"], "ohlc": [[105.98, 109.42, 105.1, 111.075], [108.0, 113.19, 107.5067, 114.92], [112.11, 113.86, 111.5, 115.21], [114.77, 120.38, 114.13, 122.08], [120.5, 124.34, 120.175, 124.66], [123.06, 121.93, 121.2853, 126.67], [120.99, 116.61, 114.66, 121.43], [117.4, 115.63, 113.6, 118.83], [115.28, 112.97, 112.42, 117.21], [112.81, 113.62, 111.71, 115.9099], [116.9, 114.88, 113.8, 117.2], [115.4, 116.72, 114.2, 118.99], [115.0, 113.71, 113.53, 117.44], [114.18, 113.27, 111.945, 117.09], [111.3, 110.38, 109.12, 112.15], [110.76, 110.95, 109.89, 113.25], [109.14, 104.65, 104.32, 109.25], [106.5, 103.06, 101.14, 106.88], [102.42, 103.64, 100.88, 105.84], [102.64, 99.41, 98.34, 102.67], [100.06, 104.97, 99.5, 105.99], [105.54, 104.55, 104.06, 106.58], [105.23, 104.04, 102.01, 105.9], [101.79, 102.0, 98.455, 103.41], [102.965, 102.42, 100.4, 103.33], [102.77, 100.55, 99.5, 103.96], [104.76, 97.47, 96.96, 105.58], [96.5, 89.81, 88.6611, 97.16], [88.91, 83.0, 81.24, 88.91], [84.77, 89.06, 84.1806, 89.24], [90.74, 87.79, 87.115, 92.4], [90.195, 94.19, 89.2, 94.83], [97.61, 96.44, 95.372, 99.3889], [97.95, 96.66, 96.13, 98.8248], [97.44, 99.72, 96.81, 100.6697], [100.35, 100.14, 99.06, 104.5], [101.5, 103.07, 101.03, 104.31], [87.25, 84.78, 83.58, 90.02], [85.78, 90.17, 84.93, 90.39], [89.06, 90.45, 87.81, 94.03], [91.1, 90.49, 90.1335, 93.0], [89.06, 88.89, 87.1, 89.3], [87.95, 88.31, 85.88, 88.71], [90.93, 91.16, 87.87, 92.6049], [91.27, 91.97, 91.1, 95.62], [92.25, 92.01, 89.14, 92.8877], [91.6, 89.05, 88.21, 91.68], [92.17, 93.59, 91.89, 95.56], [91.13, 91.18, 88.99, 91.85], [91.04, 91.49, 90.47, 94.75], [92.465, 89.0, 88.685, 92.77], [88.58, 87.05, 86.0104, 88.58], [87.32, 90.5, 85.44, 92.0], [92.09, 95.07, 91.97, 96.67], [98.86, 103.42, 97.85, 104.68], [110.14, 101.83, 100.7723, 110.83], [100.75, 103.3, 97.5, 103.35], [100.99, 99.69, 98.11, 101.59], [102.18, 102.13, 99.4328, 104.59], [100.555, 99.92, 98.72, 102.54], [99.21, 102.12, 98.55, 105.4], [107.0, 108.73, 104.6, 110.16], [118.48, 124.37, 116.29, 124.74]], "volumes": [14780512.0, 17606052.0, 17432036.0, 26567952.0, 25972281.0, 20324655.0, 21872618.0, 14594932.0, 18372088.0, 14846421.0, 12289433.0, 13368492.0, 10080118.0, 11361578.0, 18863005.0, 12219082.0, 17835244.0, 14728636.0, 11595349.0, 18109916.0, 18685639.0, 16821305.0, 12439653.0, 16629939.0, 9141302.0, 12008228.0, 19796897.0, 42131524.0, 58715602.0, 31675449.0, 25132668.0, 25835933.0, 21971842.0, 17754618.0, 20306567.0, 24147878.0, 35714825.0, 84103053.0, 39011787.0, 32789128.0, 20990419.0, 18646580.0, 22152196.0, 22911831.0, 21863487.0, 22756773.0, 23117901.0, 27960738.0, 24699020.0, 21402857.0, 22354585.0, 22107022.0, 25571514.0, 34569746.0, 51220734.0, 55624414.0, 30037715.0, 26474043.0, 23646295.0, 23589915.0, 28633258.0, 39117684.0, 68243445.0], "ma20_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 112.631, 112.4085, 111.97649999999999, 111.4855, 110.56649999999999, 109.47049999999999, 108.40150000000001, 107.44449999999999, 106.15350000000001, 104.655, 103.42699999999999, 102.0725, 100.946, 100.08250000000001, 99.252, 98.719, 98.17850000000001, 98.0995, 97.1855, 96.512, 96.06400000000001, 95.34, 94.55699999999999, 93.7705, 93.2285, 92.706, 92.279, 91.858, 92.047, 92.45599999999999, 92.5775, 92.638, 92.28099999999999, 91.984, 91.90450000000001, 92.0895, 92.174, 92.1855, 92.931, 93.529, 94.0025, 94.58399999999999, 95.576, 97.379], "ma50_line": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 101.6408, 101.2324, 100.70960000000001, 100.2424, 99.7362, 99.3178, 98.9158, 98.6496, 98.3308, 98.11399999999999, 97.84, 97.5848, 97.425, 97.6382], "code": "US.NOW", "name": "ServiceNow", "analyst": {"tgt_mean": 142.49931, "tgt_high": 236.0, "tgt_low": 85.0, "tgt_median": 137.5, "n_analyst": 44, "rec_key": "strong_buy", "rec_mean": 1.4375, "fwd_pe": 24.741928, "trail_pe": 74.02976, "eps_g": 0.023, "rev_g": 0.221, "margin": 0.12586, "beta": 0.819, "sector": "Technology", "industry": "Software - Application"}, "news": [{"title": "TD SYNNEX (SNX) Surges 6.1%: Is This an Indication of Further Gains?", "summary": "TD SYNNEX (SNX) witnessed a jump in share price last session on above-average trading volume. The latest trend in earnings estimate revisions for the stock sugg", "url": "https://finance.yahoo.com/markets/stocks/articles/td-synnex-snx-surges-6-062700757.html", "provider": "Zacks", "pub": "2026-06-01", "sent": 4}, {"title": "ServiceNow Stock: Is NOW Underperforming the Technology Sector?", "summary": "While ServiceNow has lagged behind the technology sector over the past year, Wall Street analysts maintain a bullish outlook on the stock’s prospects.", "url": "https://www.barchart.com/story/news/2224240/servicenow-stock-is-now-underperforming-the-technology-sector", "provider": "Barchart", "pub": "2026-05-31", "sent": 1}, {"title": "Is Uber Technologies Stock Underperforming the Dow?", "summary": "Uber Technologies has lagged behind the Dow over the past year, yet Wall Street analysts maintain a strongly optimistic outlook on the stock’s prospects.", "url": "https://www.barchart.com/story/news/2223751/is-uber-technologies-stock-underperforming-the-dow", "provider": "Barchart", "pub": "2026-05-31", "sent": 2}, {"title": "ServiceNow AI Control Tower Ambitions Test Post SaaSpocalypse Narrative", "summary": "ServiceNow (NYSE:NOW) is expanding its role in enterprise AI through multi-year partnerships with companies including Experian and Wipro. The company is integra", "url": "https://finance.yahoo.com/markets/stocks/articles/servicenow-ai-control-tower-ambitions-110425112.html", "provider": "Simply Wall St.", "pub": "2026-05-31", "sent": 2}, {"title": "Jim Cramer on ServiceNow: “I Don’t Think That It’s Going to Have a Huge Year”", "summary": "ServiceNow, Inc. (NYSE:NOW) was among the stocks Jim Cramer discussed in this changing market. A caller inquired whether now is the time to buy the stock, notin", "url": "https://finance.yahoo.com/markets/stocks/articles/jim-cramer-servicenow-don-t-150826555.html", "provider": "Insider Monkey", "pub": "2026-05-30", "sent": 0}, {"title": "Is Intuit’s Stock Underperforming the S&P 500?", "summary": "While Intuit has struggled to keep up with the broader S&P 500 Index over the past year, Wall Street analysts remain highly bullish about the stock’s prospects.", "url": "https://www.barchart.com/story/news/2216478/is-intuits-stock-underperforming-the-s-p-500", "provider": "Barchart", "pub": "2026-05-30", "sent": 1}], "sent_avg": 1.67, "sent_label": "看多", "upside": 14.576915654900713, "pricing_logic": "44位分析师给出共识 [强烈买入] (评分 1.44/5, 越低越多头) · 目标价区间 $85 – $236，均价 $142.5 (+14.6% vs 现价) · 远期PE 24.7× vs 当前PE 74.0× → 估值消化(盈利增长快于股价) · 盈利同比 +2% / 营收 +22% / 净利率 13%"}], "ts": "2026-06-01 17:38:47", "watchlist": [{"code": "US.NVDA", "name": "NVIDIA"}, {"code": "US.MSFT", "name": "Microsoft"}, {"code": "US.GOOGL", "name": "Alphabet"}, {"code": "US.META", "name": "Meta"}, {"code": "US.AMZN", "name": "Amazon"}, {"code": "US.AAPL", "name": "Apple"}, {"code": "US.TSLA", "name": "Tesla"}, {"code": "US.NOW", "name": "ServiceNow"}], "positions": {}, "public_mode": true};
+let D = BOOT.data;
+let WL = BOOT.watchlist;
+let POS = BOOT.positions || {};   // 服务器持仓
+const PUBLIC_MODE = !!BOOT.public_mode;  // 静态快照模式: 隐藏个人持仓 & API 按钮
+let lastUpdate = Date.now();
+document.getElementById("ts").textContent = BOOT.ts;
+
+if (PUBLIC_MODE) {
+  // 公开版: 屏蔽所有写入类按钮 + 持仓相关 UI
+  document.querySelectorAll("#refreshBtn, .search-wrap, .btn-ghost").forEach(el=>el.style.display="none");
+  const meta = document.querySelector("header .meta");
+  if (meta) meta.insertAdjacentHTML("beforeend", ' <span style="color:#fbbf24">· 📷 公开只读快照</span>');
+  // 隐藏持仓汇总区块
+  const portBox = document.getElementById("portfolio_box");
+  if (portBox) {
+    portBox.style.display = "none";
+    const prev = portBox.previousElementSibling;
+    if (prev && prev.classList.contains("section-title")) prev.style.display = "none";
+  }
+  // 自选汇总卡片改文案
+  document.querySelectorAll(".section-title").forEach(t=>{
+    if (t.textContent.includes("自选汇总卡片")) t.textContent = "自选股技术面 (公开版)";
+  });
+}
+
+// localStorage 缓存：在服务器同步之前先用本地的，加速首屏
+const LS_KEY = "dashboard_positions_v1";
+try{
+  const lsPos = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  // 服务器为准；只有服务器没有时才用本地
+  if(Object.keys(POS).length === 0 && Object.keys(lsPos).length > 0) POS = lsPos;
+}catch(e){}
+function persistLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(POS)); }catch(e){} }
+persistLocal();
+const charts = [];  // 保存所有 echarts 实例以便 dispose
+const fmt = (n,d=2)=> n==null||isNaN(n)?"-":Number(n).toLocaleString("en",{maximumFractionDigits:d,minimumFractionDigits:d});
+const fmtB = n => n? (n/1e9).toFixed(1)+"B":"-";
+const cls = n => n>0?"up":n<0?"dn":"nu";
+const arrow = n => n>0?"▲":n<0?"▼":"●";
+
+function render(){
+  // 清理旧 chart
+  charts.forEach(c=>c.dispose()); charts.length = 0;
+
+  document.getElementById("wl_count").textContent = D.length;
+  // 汇总卡片 + 持仓输入
+  const cards = document.getElementById("cards"); cards.innerHTML = "";
+  D.forEach(s=>{
+    const p = POS[s.code] || {shares:0, cost:0};
+    const mv = p.shares * s.last;
+    const cb = p.shares * (p.cost || 0);
+    const pnl = mv - cb;
+    const pnlPct = cb>0 ? (pnl/cb)*100 : 0;
+    const sl = s.sug.sl_final;
+    const distSL = ((s.last - sl) / s.last) * 100;  // 距止损的下跌空间
+    cards.insertAdjacentHTML("beforeend",`
+      <div class="card">
+        <span class="sig" style="background:${s.color}">${s.signal}</span>
+        <div class="sym">${s.code}</div>
+        <div class="nm">${s.name}</div>
+        <div class="px">$${fmt(s.last)}</div>
+        <div class="row"><span>当日</span><span class="${cls(s.chg1d)}">${arrow(s.chg1d)} ${fmt(s.chg1d)}%</span></div>
+        <div class="row"><span>3个月</span><span class="${cls(s.chg3m)}">${fmt(s.chg3m)}%</span></div>
+        <div class="row"><span>建议止损</span><span class="dn">$${fmt(sl)} (-${fmt(distSL,1)}%)</span></div>
+        <div class="row"><span>量比</span><span class="${s.vol_ratio>1.5?'up':s.vol_ratio<0.7?'dn':'nu'}">${fmt(s.vol_ratio)}×</span></div>
+        ${PUBLIC_MODE ? '' : `<div class="pos-panel">
+          <div class="pos-row"><span>持仓</span><input type="number" min="0" step="1" value="${p.shares||''}" placeholder="股数" data-code="${s.code}" data-field="shares"></div>
+          <div class="pos-row"><span>成本</span><input type="number" min="0" step="0.01" value="${p.cost||''}" placeholder="单价 $" data-code="${s.code}" data-field="cost"></div>
+          ${p.shares>0 ? `
+          <div class="pos-stat"><span>市值</span><b>$${fmt(mv,0)}</b></div>
+          <div class="pos-stat"><span>盈亏</span><b class="${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}$${fmt(pnl,0)} (${fmt(pnlPct)}%)</b></div>
+          ` : `<div class="pos-stat" style="text-align:center;color:#475569">未持仓</div>`}
+        </div>`}
+        ${PUBLIC_MODE ? '' : `<button class="rm" title="从自选移除" onclick="removeStock('${s.code}','${(s.name||'').replace(/'/g,"\\'")}')">×</button>`}
+      </div>`);
+  });
+  if (!PUBLIC_MODE) {
+    cards.querySelectorAll(".pos-panel input").forEach(inp=>{
+      inp.addEventListener("change", onPosChange);
+      inp.addEventListener("blur", onPosChange);
+    });
+    renderPortfolio();
+  }
+
+  // 明细表
+  const tb = document.querySelector("#tbl tbody"); tb.innerHTML = "";
+  D.forEach(s=>{
+    tb.insertAdjacentHTML("beforeend",`
+      <tr>
+        <td><b>${s.name}</b> <span style="color:#64748b">${s.code.replace("US.","")}</span></td>
+        <td>$${fmt(s.last)}</td>
+        <td class="${cls(s.chg1d)}">${fmt(s.chg1d)}%</td>
+        <td class="${cls(s.chg1w)}">${fmt(s.chg1w)}%</td>
+        <td class="${cls(s.chg1m)}">${fmt(s.chg1m)}%</td>
+        <td class="${cls(s.chg3m)}">${fmt(s.chg3m)}%</td>
+        <td>${fmt(s.pos_in_range,0)}%</td>
+        <td class="${s.vol_ratio>1.5?'up':s.vol_ratio<0.7?'dn':'nu'}">${fmt(s.vol_ratio)}×</td>
+        <td>${fmt(s.vol_annual)}%</td>
+        <td>${fmt(s.rsi,0)}</td>
+        <td>${fmt(s.pe)}</td>
+        <td>${fmtB(s.mcap)}</td>
+        <td><span class="badge" style="background:${s.color}">${s.signal}</span></td>
+      </tr>`);
+  });
+
+  // 整体情绪
+  const avgScore = D.reduce((a,b)=>a+b.score,0)/D.length;
+  const ov = avgScore>=1?"偏多 ▲":avgScore<=-1?"偏空 ▼":"中性 ●";
+  const ovColor = avgScore>=1?"#22c55e":avgScore<=-1?"#ef4444":"#94a3b8";
+  document.getElementById("overall").innerHTML = `<span style="color:${ovColor};font-weight:600">${ov}</span> (评分 ${avgScore.toFixed(2)})`;
+
+  // 对比柱图
+  function barChart(id, vals, color){
+    const c = echarts.init(document.getElementById(id),"dark"); charts.push(c);
+    c.setOption({
+      backgroundColor:"transparent", grid:{left:60,right:20,top:20,bottom:30},
+      tooltip:{trigger:"axis"}, xAxis:{type:"category",data:D.map(s=>s.name)},
+      yAxis:{type:"value"},
+      series:[{type:"bar",data:vals.map((v,i)=>({value:v,itemStyle:{color: typeof color==='function'?color(v,i):color}})), label:{show:true,position:"top",color:"#cbd5e1",fontSize:10,formatter:p=>p.value.toFixed(1)}}]
+    });
+  }
+  barChart("cmp_chg", D.map(s=>s.chg3m), v=> v>=0?"#22c55e":"#ef4444");
+  barChart("cmp_vol", D.map(s=>s.vol_annual), "#f59e0b");
+  barChart("cmp_vr",  D.map(s=>s.vol_ratio),  v=> v>=1.5?"#22c55e":v<0.7?"#ef4444":"#3b82f6");
+  barChart("cmp_pe",  D.map(s=>s.pe),         "#a855f7");
+
+  // K线小图
+  const kw = document.getElementById("klines"); kw.innerHTML = "";
+  D.forEach((s,i)=>{
+    kw.insertAdjacentHTML("beforeend",`<div class="chart-card"><h3>${s.name} (${s.code.replace("US.","")}) · 最新 $${fmt(s.last)} <span class="${cls(s.chg3m)}">${fmt(s.chg3m)}% (3M)</span></h3><div id="k_${i}" class="chart"></div></div>`);
+  });
+  D.forEach((s,i)=>{
+    const c = echarts.init(document.getElementById("k_"+i),"dark"); charts.push(c);
+    c.setOption({
+      backgroundColor:"transparent",
+      legend:{data:["K","MA20","MA50"],top:0,textStyle:{color:"#94a3b8",fontSize:10}},
+      grid:[{left:50,right:20,top:30,height:"55%"},{left:50,right:20,top:"72%",height:"20%"}],
+      xAxis:[
+        {type:"category",data:s.dates,boundaryGap:true,axisLine:{lineStyle:{color:"#334155"}},axisLabel:{color:"#94a3b8",fontSize:9}},
+        {type:"category",data:s.dates,gridIndex:1,axisLine:{lineStyle:{color:"#334155"}},axisLabel:{show:false}}
+      ],
+      yAxis:[
+        {scale:true,splitLine:{lineStyle:{color:"#1e293b"}},axisLabel:{color:"#94a3b8",fontSize:9}},
+        {gridIndex:1,splitLine:{show:false},axisLine:{show:false},axisLabel:{show:false}}
+      ],
+      tooltip:{trigger:"axis",axisPointer:{type:"cross"}},
+      series:[
+        {name:"K",type:"candlestick",data:s.ohlc,itemStyle:{color:"#22c55e",color0:"#ef4444",borderColor:"#22c55e",borderColor0:"#ef4444"}},
+        {name:"MA20",type:"line",data:s.ma20_line,smooth:true,symbol:"none",lineStyle:{color:"#f59e0b",width:1}},
+        {name:"MA50",type:"line",data:s.ma50_line,smooth:true,symbol:"none",lineStyle:{color:"#a855f7",width:1}},
+        {name:"Vol",type:"bar",xAxisIndex:1,yAxisIndex:1,data:s.volumes.map((v,j)=>({value:v,itemStyle:{color: s.ohlc[j][1]>=s.ohlc[j][0]?"#22c55e":"#ef4444"}}))}
+      ]
+    });
+  });
+
+  // 信号解读
+  const stb = document.getElementById("sig_tbl"); stb.innerHTML = "";
+  D.forEach(s=>{
+    const supp = Math.max(s.ma20, s.bb_dn);
+    const resi = Math.min(s.hi3m, s.bb_up);
+    stb.insertAdjacentHTML("beforeend",`
+      <tr>
+        <td><b>${s.name}</b></td>
+        <td>${s.score>0?'+':''}${s.score}</td>
+        <td><span class="badge" style="background:${s.color}">${s.signal}</span></td>
+        <td style="text-align:left;font-size:12px;color:#cbd5e1">${s.reasons.join(" · ")}</td>
+        <td>$${fmt(supp)} / $${fmt(resi)}</td>
+      </tr>`);
+  });
+
+  // ----- 分析师定价表 -----
+  const recColor = k => ({strong_buy:"#16a34a", buy:"#22c55e", hold:"#94a3b8", underperform:"#f59e0b", sell:"#ef4444"}[k] || "#94a3b8");
+  const recText  = k => ({strong_buy:"强烈买入", buy:"买入", hold:"中性", underperform:"减持", sell:"卖出"}[k] || (k||"n/a"));
+  const atb = document.querySelector("#ana_tbl tbody"); atb.innerHTML = "";
+  D.forEach(s=>{
+    const a = s.analyst || {};
+    const up = s.upside;
+    atb.insertAdjacentHTML("beforeend",`
+      <tr>
+        <td><b>${s.name}</b></td>
+        <td>$${fmt(s.last)}</td>
+        <td>${a.tgt_mean?'$'+fmt(a.tgt_mean):'-'}</td>
+        <td style="font-size:12px">${a.tgt_low?'$'+fmt(a.tgt_low,0)+' – $'+fmt(a.tgt_high,0):'-'}</td>
+        <td class="${up>0?'up':up<0?'dn':'nu'}">${up==null?'-':fmt(up)+'%'}</td>
+        <td>${a.n_analyst||'-'}</td>
+        <td><span class="badge" style="background:${recColor(a.rec_key)}">${recText(a.rec_key)}</span></td>
+        <td>${a.rec_mean?fmt(a.rec_mean):'-'}</td>
+        <td>${a.fwd_pe?fmt(a.fwd_pe):'-'}</td>
+        <td class="${(a.eps_g||0)>0?'up':(a.eps_g||0)<0?'dn':'nu'}">${a.eps_g==null?'-':fmt(a.eps_g*100,0)+'%'}</td>
+        <td class="${(a.rev_g||0)>0?'up':(a.rev_g||0)<0?'dn':'nu'}">${a.rev_g==null?'-':fmt(a.rev_g*100,0)+'%'}</td>
+      </tr>`);
+  });
+
+  // ----- 定价逻辑解读 -----
+  const pb = document.getElementById("pricing_box"); pb.innerHTML = "";
+  D.forEach(s=>{
+    pb.insertAdjacentHTML("beforeend",`
+      <div class="stock-block">
+        <h4>${s.name} <span style="color:#64748b">(${s.code.replace("US.","")})</span>
+          ${s.upside!=null?`<span class="gauge" style="background:${s.upside>0?'#16a34a':'#ef4444'};color:#fff">分析师隐含上涨空间 ${fmt(s.upside)}%</span>`:''}
+        </h4>
+        <div class="pricing-card">${s.pricing_logic}</div>
+      </div>`);
+  });
+
+  // ----- PE 估值对比（当前 PE vs 远期 PE）-----
+  const peChart = echarts.init(document.getElementById("cmp_pe2"),"dark"); charts.push(peChart);
+  peChart.setOption({
+    backgroundColor:"transparent",
+    legend:{data:["当前 PE (trailing)","远期 PE (forward)"],top:0,textStyle:{color:"#cbd5e1",fontSize:11}},
+    grid:{left:60,right:20,top:36,bottom:30},
+    tooltip:{trigger:"axis",formatter:p=>{
+      const s = D[p[0].dataIndex];
+      const a = s.analyst||{};
+      const trend = (a.fwd_pe && a.trail_pe)
+        ? (a.fwd_pe < a.trail_pe*0.85 ? "估值消化 📉":
+           a.fwd_pe > a.trail_pe*1.05 ? "估值扩张 📈":"估值持平 ➡️")
+        : "数据不足";
+      return `<b>${s.name}</b><br/>当前 PE: ${a.trail_pe?fmt(a.trail_pe):'-'}<br/>远期 PE: ${a.fwd_pe?fmt(a.fwd_pe):'-'}<br/>趋势: ${trend}`;
+    }},
+    xAxis:{type:"category",data:D.map(s=>s.name),axisLabel:{color:"#94a3b8",fontSize:11}},
+    yAxis:{type:"value",axisLabel:{color:"#94a3b8"}},
+    series:[
+      {name:"当前 PE (trailing)",type:"bar",data:D.map(s=>s.analyst?.trail_pe||s.pe||0),itemStyle:{color:"#a855f7"},
+       label:{show:true,position:"top",color:"#cbd5e1",fontSize:10,formatter:p=>p.value?p.value.toFixed(1):"-"}},
+      {name:"远期 PE (forward)",type:"bar",data:D.map(s=>s.analyst?.fwd_pe||0),itemStyle:{color:"#3b82f6"},
+       label:{show:true,position:"top",color:"#cbd5e1",fontSize:10,formatter:p=>p.value?p.value.toFixed(1):"-"}}
+    ]
+  });
+
+  // ----- 个性化交易建议表 (止损/止盈/仓位健康) -----
+  const stt = document.getElementById("sltp_tbl"); stt.innerHTML = "";
+  D.forEach(s=>{
+    const sug = s.sug || {};
+    const a = s.analyst || {};
+    const p = POS[s.code] || {shares:0, cost:0};
+    let health = '<span style="color:#475569">未持仓</span>';
+    if(p.shares > 0){
+      const pnlPct = p.cost>0 ? ((s.last - p.cost) / p.cost) * 100 : 0;
+      const distSL = ((s.last - sug.sl_final) / s.last) * 100;
+      if(p.cost > 0 && s.last <= p.cost * 0.93){
+        health = `<span class="badge" style="background:#ef4444">🚨 触发 -7% 铁律 ${fmt(pnlPct)}%</span>`;
+      } else if(s.last < sug.sl_final){
+        health = `<span class="badge" style="background:#ef4444">已破止损位</span>`;
+      } else if(distSL < 3){
+        health = `<span class="badge" style="background:#f59e0b">⚠️ 接近止损 (${fmt(distSL,1)}%空间)</span>`;
+      } else if(p.cost>0 && s.last >= p.cost * 1.5){
+        health = `<span class="badge" style="background:#16a34a">✓ +50%, 可减 1/3 (${fmt(pnlPct)}%)</span>`;
+      } else if(p.cost>0 && s.last >= p.cost * 1.2){
+        health = `<span class="badge" style="background:#22c55e">✓ +20%, 可减 1/3 (${fmt(pnlPct)}%)</span>`;
+      } else {
+        const c = pnlPct>=0?"#22c55e":"#ef4444";
+        health = `<span style="color:${c};font-weight:600">持仓 ${pnlPct>=0?'+':''}${fmt(pnlPct)}%</span>`;
+      }
+    }
+    const tgt = a.tgt_mean ? `$${fmt(a.tgt_mean)}` : '-';
+    stt.insertAdjacentHTML("beforeend",`
+      <tr>
+        <td><b>${s.name}</b> <span style="color:#64748b">${s.code.replace("US.","")}</span></td>
+        <td>$${fmt(s.last)}</td>
+        <td class="dn">$${fmt(sug.sl_oneil)}</td>
+        <td class="dn">$${fmt(sug.sl_atr)}</td>
+        <td>$${fmt(sug.sl_ma50)}</td>
+        <td><b class="dn">$${fmt(sug.sl_final)}</b> <span style="color:#94a3b8">(${fmt(sug.sl_pct,1)}%)</span></td>
+        <td class="up">$${fmt(sug.tp1)}</td>
+        <td class="up">$${fmt(sug.tp2)}</td>
+        <td>${tgt}</td>
+        ${PUBLIC_MODE ? '' : `<td style="text-align:left">${health}</td>`}
+      </tr>`);
+  });
+  if (PUBLIC_MODE) document.querySelectorAll(".pos-col").forEach(el=>el.style.display="none");
+
+  // ----- 板块舆论柱图 -----
+  barChart("cmp_sent",   D.map(s=>s.sent_avg), v=> v>0.4?"#22c55e":v<-0.4?"#ef4444":"#94a3b8");
+  barChart("cmp_upside", D.map(s=>s.upside||0), v=> v>0?"#22c55e":"#ef4444");
+
+  // ----- 最新舆论 -----
+  const nb = document.getElementById("news_box"); nb.innerHTML = "";
+  const sentBadge = sc => sc>0?`<span class="sent" style="background:#16a34a;color:#fff">+${sc}</span>`
+                          : sc<0?`<span class="sent" style="background:#ef4444;color:#fff">${sc}</span>`
+                          : `<span class="sent" style="background:#475569;color:#fff">0</span>`;
+  D.forEach(s=>{
+    if(!s.news || !s.news.length) return;
+    const items = s.news.map(n=>`
+      <div class="news-item">
+        ${sentBadge(n.sent)}
+        <div><a href="${n.url}" target="_blank">${n.title}</a><div class="src">${n.provider} · ${n.pub}</div></div>
+        <div style="color:#64748b;font-size:11px;text-align:right">${n.summary?n.summary.slice(0,80)+(n.summary.length>80?'…':''):''}</div>
+      </div>`).join("");
+    nb.insertAdjacentHTML("beforeend",`
+      <div class="stock-block">
+        <details ${s.sent_avg!==0?'open':''}>
+          <summary><b style="color:#e2e8f0">${s.name}</b> · 情感均值
+            <span style="color:${s.sent_avg>0.4?'#22c55e':s.sent_avg<-0.4?'#ef4444':'#94a3b8'};font-weight:600">${s.sent_avg>0?'+':''}${s.sent_avg} ${s.sent_label}</span>
+            · ${s.news.length} 条头条
+          </summary>
+          <div class="news-list">${items}</div>
+        </details>
+      </div>`);
+  });
+}
+
+// ----- 持仓输入 / 汇总 -----
+let posSaveTimer = null;
+function syncPositionsToServer(){
+  clearTimeout(posSaveTimer);
+  posSaveTimer = setTimeout(async ()=>{
+    try{
+      await fetch("/api/positions", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({positions: POS})});
+    }catch(e){ console.warn("持仓同步服务器失败:", e); }
+  }, 500);
+}
+
+function onPosChange(e){
+  const inp = e.target;
+  const code = inp.dataset.code;
+  const field = inp.dataset.field;
+  const v = parseFloat(inp.value);
+  POS[code] = POS[code] || {shares:0, cost:0};
+  POS[code][field] = isNaN(v) ? 0 : v;
+  // 如果股数为 0 且成本为 0，则删除该条目
+  if((POS[code].shares||0) <= 0 && (POS[code].cost||0) <= 0) delete POS[code];
+  persistLocal();
+  syncPositionsToServer();
+  // 仅局部刷新汇总和该卡片显示
+  renderPortfolio();
+  updateCardPnl(code);
+}
+
+function updateCardPnl(code){
+  const s = D.find(x=>x.code===code); if(!s) return;
+  const p = POS[code] || {shares:0, cost:0};
+  // 找到所属 card：用 input 的 closest .card
+  const inp = document.querySelector(`.pos-panel input[data-code="${code}"]`);
+  if(!inp) return;
+  const panel = inp.closest(".pos-panel");
+  // 清掉旧的 pos-stat
+  panel.querySelectorAll(".pos-stat").forEach(el=>el.remove());
+  if(p.shares > 0){
+    const mv = p.shares * s.last;
+    const cb = p.shares * (p.cost || 0);
+    const pnl = mv - cb;
+    const pnlPct = cb>0 ? (pnl/cb)*100 : 0;
+    panel.insertAdjacentHTML("beforeend",
+      `<div class="pos-stat"><span>市值</span><b>$${fmt(mv,0)}</b></div>
+       <div class="pos-stat"><span>盈亏</span><b class="${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}$${fmt(pnl,0)} (${fmt(pnlPct)}%)</b></div>`);
+  } else {
+    panel.insertAdjacentHTML("beforeend", `<div class="pos-stat" style="text-align:center;color:#475569">未持仓</div>`);
+  }
+}
+
+function renderPortfolio(){
+  const box = document.getElementById("portfolio_box");
+  let totalCost = 0, totalMv = 0, count = 0, winners = 0;
+  const breakdown = [];
+  D.forEach(s=>{
+    const p = POS[s.code];
+    if(!p || !p.shares) return;
+    const mv = p.shares * s.last;
+    const cb = p.shares * (p.cost || 0);
+    totalMv += mv;
+    totalCost += cb;
+    count += 1;
+    if(mv >= cb) winners += 1;
+    breakdown.push({name:s.name, code:s.code, mv, cb, pnl: mv - cb});
+  });
+  if(count === 0){
+    box.innerHTML = `<div class="item" style="grid-column:1/-1;color:#64748b;font-size:13px">尚未填写任何持仓 · 在下方卡片的"持仓/成本"输入框填入即可</div>`;
+    return;
+  }
+  const pnl = totalMv - totalCost;
+  const pnlPct = totalCost>0 ? (pnl/totalCost)*100 : 0;
+  // 集中度：最大单仓占比
+  const maxWeight = Math.max(...breakdown.map(b=>b.mv))/totalMv*100;
+  const concentrationColor = maxWeight > 25 ? "#ef4444" : maxWeight > 15 ? "#f59e0b" : "#22c55e";
+  box.innerHTML = `
+    <div class="item"><div class="label">持仓数</div><div class="val">${count}</div></div>
+    <div class="item"><div class="label">总成本</div><div class="val">$${fmt(totalCost,0)}</div></div>
+    <div class="item"><div class="label">总市值</div><div class="val">$${fmt(totalMv,0)}</div></div>
+    <div class="item"><div class="label">浮动盈亏</div><div class="val ${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}$${fmt(pnl,0)}</div></div>
+    <div class="item"><div class="label">盈亏%</div><div class="val ${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}${fmt(pnlPct)}%</div></div>
+    <div class="item"><div class="label">胜率</div><div class="val">${winners}/${count}</div></div>
+    <div class="item"><div class="label">最大单仓占比</div><div class="val" style="color:${concentrationColor}">${fmt(maxWeight,1)}%${maxWeight>10?' ⚠':''}</div></div>
+  `;
+}
+
+async function refresh(){
+  const btn = document.getElementById("refreshBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span><span>拉取中...</span>';
+  try{
+    const r = await fetch("/api/data", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const j = await r.json();
+    if(j.error) throw new Error(j.error);
+    D = j.data; WL = j.watchlist || WL;
+    lastUpdate = Date.now();
+    document.getElementById("ts").textContent = j.ts;
+    render();
+    updateAgo();
+  }catch(e){
+    alert("刷新失败: "+e.message+"\n请确认 Python 服务和 FutuOpenD 仍在运行。");
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = '<span>⟳</span><span>刷新</span>';
+  }
+}
+
+// ----- 自选股 增/删 -----
+async function addStock(code, name){
+  hideSearch();
+  document.getElementById("searchInput").value = "";
+  try{
+    const r = await fetch("/api/watchlist/add", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code, name})});
+    const j = await r.json();
+    if(!r.ok){ alert(j.error || "添加失败"); return; }
+    await refresh();
+  }catch(e){ alert("添加失败: "+e.message); }
+}
+
+async function removeStock(code, name){
+  if(!confirm("从自选移除 "+(name||code)+" ?")) return;
+  try{
+    const r = await fetch("/api/watchlist/remove", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code})});
+    const j = await r.json();
+    if(!r.ok){ alert(j.error || "移除失败"); return; }
+    await refresh();
+  }catch(e){ alert("移除失败: "+e.message); }
+}
+
+async function resetWatchlist(){
+  if(!confirm("恢复为默认 Mag7 自选 (会清空当前自选)?")) return;
+  try{
+    const r = await fetch("/api/watchlist/reset", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    if(!r.ok){ const j = await r.json(); alert(j.error || "失败"); return; }
+    await refresh();
+  }catch(e){ alert("失败: "+e.message); }
+}
+
+// ----- 搜索 -----
+let searchTimer = null;
+const sInput = document.getElementById("searchInput");
+const sResults = document.getElementById("searchResults");
+
+function hideSearch(){ sResults.classList.remove("show"); }
+
+sInput.addEventListener("input", ()=>{
+  clearTimeout(searchTimer);
+  const q = sInput.value.trim();
+  if(q.length < 1){ hideSearch(); return; }
+  searchTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch("/api/search?q="+encodeURIComponent(q));
+      const j = await r.json();
+      const inWL = new Set(WL.map(x=>x.code));
+      if(!j.results || !j.results.length){
+        sResults.innerHTML = '<div class="sr-empty">未找到匹配的美股</div>';
+      } else {
+        sResults.innerHTML = j.results.map(it=>{
+          const exists = inWL.has(it.code);
+          const codeShort = it.code.replace("US.","");
+          const safeName = (it.name||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");
+          return `<div class="sr-item" ${exists?'style="opacity:.5;cursor:not-allowed" title="已在自选"':`onclick="addStock('${it.code}','${safeName.replace(/'/g,"\\'")}')"`}>
+            <span class="sr-code">${codeShort}</span>
+            <span class="sr-name">${safeName}</span>
+            <span class="sr-add">${exists?'✓':'+'}</span>
+          </div>`;
+        }).join("");
+      }
+      sResults.classList.add("show");
+    }catch(e){
+      sResults.innerHTML = '<div class="sr-empty">搜索失败: '+e.message+'</div>';
+      sResults.classList.add("show");
+    }
+  }, 200);
+});
+sInput.addEventListener("focus", ()=>{ if(sInput.value.trim()) sResults.classList.add("show"); });
+document.addEventListener("click", e=>{
+  if(!e.target.closest(".search-wrap")) hideSearch();
+});
+
+function updateAgo(){
+  const sec = Math.floor((Date.now()-lastUpdate)/1000);
+  const txt = sec<5?"刚刚": sec<60?`${sec}秒前`: sec<3600?`${Math.floor(sec/60)}分${sec%60}秒前`: `${Math.floor(sec/3600)}小时前`;
+  document.getElementById("ago").textContent = txt;
+}
+
+render();
+setInterval(updateAgo, 1000);
+window.addEventListener("resize", ()=> charts.forEach(c=>c.resize()));
+</script>
+</body></html>
