@@ -5,6 +5,7 @@ import math
 import os
 import subprocess
 import threading
+import time
 import warnings
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,33 @@ YF_SESSION = cffi_requests.Session(impersonate="chrome")
 # 简易缓存：分析师/新闻 30 分钟刷新一次，避免被限流
 _YF_CACHE = {"ts": 0, "data": {}}
 _YF_TTL = 30 * 60  # 秒
+
+# ---------------- Futu 全局连接 (单例, 避免每次请求 0.5s 的 connect/disconnect) ----------------
+_FUTU_CTX = None
+_FUTU_LOCK = threading.Lock()
+
+def get_futu():
+    """复用 OpenQuoteContext；首次调用懒加载。"""
+    global _FUTU_CTX
+    with _FUTU_LOCK:
+        if _FUTU_CTX is None:
+            from futu import OpenQuoteContext
+            _FUTU_CTX = OpenQuoteContext(host=HOST, port=PORT)
+        return _FUTU_CTX
+
+def reset_futu():
+    """连接异常时丢弃旧 ctx，下次 get_futu() 自动重连。"""
+    global _FUTU_CTX
+    with _FUTU_LOCK:
+        try:
+            if _FUTU_CTX is not None: _FUTU_CTX.close()
+        except Exception: pass
+        _FUTU_CTX = None
+
+# ---------------- 已构建数据缓存 (后台预热, GET / 直接读) ----------------
+_PAYLOAD_CACHE = {"data": None, "ts": None, "built_at": 0, "err": None}
+_PAYLOAD_LOCK = threading.Lock()
+_PAYLOAD_TTL = 300  # 缓存视为新鲜的秒数; 后台线程也用这个间隔预热
 
 HOST, PORT = "127.0.0.1", 11111
 SERVE_PORT = 8765
@@ -85,14 +113,11 @@ def load_universe():
             pass
     print("[universe] 从 Futu 拉取美股全列表 (一次性, 缓存 24h)...")
     from futu import Market, SecurityType
-    ctx = OpenQuoteContext(host=HOST, port=PORT)
-    try:
-        ret, df = ctx.get_stock_basicinfo(Market.US, SecurityType.STOCK)
-        if ret != RET_OK:
-            raise RuntimeError(f"universe 拉取失败: {df}")
-        items = [{"code": r["code"], "name": r["name"]} for _, r in df.iterrows()]
-    finally:
-        ctx.close()
+    ctx = get_futu()
+    ret, df = ctx.get_stock_basicinfo(Market.US, SecurityType.STOCK)
+    if ret != RET_OK:
+        raise RuntimeError(f"universe 拉取失败: {df}")
+    items = [{"code": r["code"], "name": r["name"]} for _, r in df.iterrows()]
     US_UNIVERSE_FILE.write_text(json.dumps(items, ensure_ascii=False))
     print(f"[universe] 缓存 {len(items)} 只美股")
     return items
@@ -121,12 +146,12 @@ def search_stocks(q, limit=20):
     return (exact + prefix + contains)[:limit]
 
 # ---------------- 数据拉取 ----------------
-def fetch_data(watchlist):
-    ctx = OpenQuoteContext(host=HOST, port=PORT)
+def _fetch_data_once(watchlist):
+    ctx = get_futu()
     codes = [c for c, _ in watchlist]
     ret, snap = ctx.get_market_snapshot(codes)
     if ret != RET_OK:
-        ctx.close(); raise RuntimeError(f"snapshot 失败: {snap}")
+        raise RuntimeError(f"snapshot 失败: {snap}")
 
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=130)).strftime("%Y-%m-%d")  # 留出非交易日缓冲
@@ -138,13 +163,21 @@ def fetch_data(watchlist):
             max_count=200,
         )
         if ret != RET_OK:
-            ctx.close(); raise RuntimeError(f"{code} K线失败: {df}")
+            raise RuntimeError(f"{code} K线失败: {df}")
         df["time_key"] = pd.to_datetime(df["time_key"])
         df = df.sort_values("time_key").reset_index(drop=True)
         # 只保留近 ~63 个交易日 (3M)
         klines[code] = df.tail(63).reset_index(drop=True)
-    ctx.close()
     return snap, klines
+
+def fetch_data(watchlist):
+    """Futu 连接异常时自动重连重试一次。"""
+    try:
+        return _fetch_data_once(watchlist)
+    except Exception as e:
+        print(f"[futu] 出错重连重试: {e}")
+        reset_futu()
+        return _fetch_data_once(watchlist)
 
 # ---------------- 舆论 + 分析师 (yfinance) ----------------
 POS_KW = {"surge","jump","rise","rises","beat","beats","gain","gains","rally","soar","soars","upgrade","bullish",
@@ -438,6 +471,31 @@ def run_snapshot():
             git_status = f"git 错误: {e}"
     print(f"[snapshot] git: {git_status}")
     return {"ts": ts, "size_kb": size_kb, "git": git_status, "pages_url": PAGES_URL}
+
+def get_payload_cached():
+    """优先返回缓存; 缓存为空时同步触发一次构建。后台线程会持续刷新。"""
+    with _PAYLOAD_LOCK:
+        cached, ts = _PAYLOAD_CACHE["data"], _PAYLOAD_CACHE["ts"]
+    if cached is not None:
+        return cached, ts
+    data, ts = build_payload()
+    with _PAYLOAD_LOCK:
+        _PAYLOAD_CACHE.update(data=data, ts=ts, built_at=time.time(), err=None)
+    return data, ts
+
+def _prewarm_loop():
+    """后台预热线程: 每 _PAYLOAD_TTL 秒重新构建一次 payload."""
+    while True:
+        try:
+            data, ts = build_payload()
+            with _PAYLOAD_LOCK:
+                _PAYLOAD_CACHE.update(data=data, ts=ts, built_at=time.time(), err=None)
+            print(f"[prewarm] 缓存已刷新 ts={ts}")
+        except Exception as e:
+            with _PAYLOAD_LOCK:
+                _PAYLOAD_CACHE["err"] = str(e)
+            print(f"[prewarm] 失败: {e}")
+        time.sleep(_PAYLOAD_TTL)
 
 def build_payload():
     watchlist = load_watchlist()
@@ -1229,8 +1287,8 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import urlparse, parse_qs
         u = urlparse(self.path)
         if u.path == "/" or u.path.startswith("/index"):
-            print("[GET /] 首次加载，拉取数据...")
-            data, ts = build_payload()
+            print("[GET /] 读取缓存...")
+            data, ts = get_payload_cached()
             wl = load_watchlist()
             payload = json.dumps({"data": data, "ts": ts,
                                   "watchlist": [{"code": c, "name": n} for c, n in wl],
@@ -1244,9 +1302,9 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif u.path == "/api/data":
-            print("[GET /api/data] 刷新中...")
+            print("[GET /api/data] 读取缓存...")
             try:
-                data, ts = build_payload()
+                data, ts = get_payload_cached()
                 wl = load_watchlist()
                 self._json({"data": data, "ts": ts,
                             "watchlist": [{"code": c, "name": n} for c, n in wl],
@@ -1347,6 +1405,7 @@ def main():
     srv = ThreadingHTTPServer((bind, SERVE_PORT), Handler)
     srv.daemon_threads = True
     print(f"服务启动: {url}  (Ctrl+C 退出)")
+    threading.Thread(target=_prewarm_loop, daemon=True, name="prewarm").start()
     if not os.environ.get("DASHBOARD_NO_BROWSER"):
         webbrowser.open(url)
     try:
