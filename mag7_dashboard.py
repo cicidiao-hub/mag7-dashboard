@@ -6,6 +6,8 @@ import json
 import math
 import os
 import secrets
+import subprocess
+import threading
 import warnings
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -431,6 +433,51 @@ def pricing_logic(last, ana):
         parts.append(f"盈利同比 {ana['eps_g']*100:+.0f}% / 营收 {ana['rev_g']*100:+.0f}% / 净利率 {(ana.get('margin') or 0)*100:.0f}%")
     return " · ".join(parts)
 
+# ---------------- 静态快照 (手动触发, 推 GitHub Pages) ----------------
+REPO_DIR = Path(__file__).resolve().parent
+PAGES_URL = "https://cicidiao-hub.github.io/mag7-dashboard/"
+_SNAPSHOT = {"running": False, "last_ts": None, "last_git": "", "last_err": None, "lock": threading.Lock()}
+
+def run_snapshot():
+    """生成 docs/index.html (持仓隐藏) + git add/commit/push. 阻塞至完成."""
+    docs = REPO_DIR / "docs"
+    docs.mkdir(exist_ok=True)
+    out = docs / "index.html"
+
+    data, ts = build_payload()
+    wl = load_watchlist()
+    payload = json.dumps({
+        "data": data, "ts": ts,
+        "watchlist": [{"code": c, "name": n} for c, n in wl],
+        "positions": {},        # 永不暴露持仓
+        "public_mode": True,
+    }, ensure_ascii=False)
+    out.write_text(HTML_TMPL.replace("__BOOTSTRAP__", payload), encoding="utf-8")
+    size_kb = round(out.stat().st_size / 1024, 1)
+    print(f"[snapshot] {out} 写入 {size_kb} KB · {len(data)} 只 · {ts}")
+
+    git_status = "no-git"
+    if (REPO_DIR / ".git").exists():
+        try:
+            subprocess.check_call(["git", "-C", str(REPO_DIR), "add", "docs/index.html"])
+            msg = f"snapshot {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            r = subprocess.run(["git", "-C", str(REPO_DIR), "commit", "-m", msg],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                p = subprocess.run(["git", "-C", str(REPO_DIR), "push"],
+                                   capture_output=True, text=True, timeout=60)
+                git_status = "pushed ✓" if p.returncode == 0 else f"push 失败: {p.stderr.strip()[:120]}"
+            elif "nothing to commit" in (r.stdout + r.stderr):
+                git_status = "无变化"
+            else:
+                git_status = f"commit 失败: {r.stderr.strip()[:120]}"
+        except subprocess.TimeoutExpired:
+            git_status = "push 超时 (60s)"
+        except subprocess.CalledProcessError as e:
+            git_status = f"git 错误: {e}"
+    print(f"[snapshot] git: {git_status}")
+    return {"ts": ts, "size_kb": size_kb, "git": git_status, "pages_url": PAGES_URL}
+
 def build_payload():
     watchlist = load_watchlist()
     snap, klines = fetch_data(watchlist)
@@ -546,7 +593,7 @@ HTML_TMPL = """<!DOCTYPE html>
 <header>
   <div>
     <h1>自选股分析看板 <span style="font-size:12px;color:#94a3b8;font-weight:400">(<span id="wl_count">0</span> 只)</span></h1>
-    <div class="meta">数据源 FutuOpenD + Yahoo Finance · 近3个月 · 更新 <span id="ts">-</span> · <span id="ago">刚刚</span> · 综合信号 <span id="overall"></span></div>
+    <div class="meta">数据源 FutuOpenD + Yahoo Finance · 近3个月 · 更新 <span id="ts">-</span> · <span id="ago">刚刚</span> · 综合信号 <span id="overall"></span> · 📸 <span id="snap_state">快照未推</span></div>
   </div>
   <div class="toolbar">
     <div class="search-wrap">
@@ -554,6 +601,7 @@ HTML_TMPL = """<!DOCTYPE html>
       <div id="searchResults" class="search-results"></div>
     </div>
     <button class="btn btn-ghost" onclick="resetWatchlist()" title="恢复默认 Mag7">↺ 默认</button>
+    <button id="snapBtn" class="btn btn-ghost" onclick="pushSnapshot()" title="生成公开版快照并推 GitHub Pages">📸 推快照</button>
     <button id="refreshBtn" class="btn" onclick="refresh()"><span>⟳</span><span>刷新</span></button>
   </div>
 </header>
@@ -1034,6 +1082,41 @@ function renderPortfolio(){
   `;
 }
 
+// ----- 手动推 GitHub Pages 快照 -----
+async function refreshSnapState(){
+  try{
+    const r = await fetch("/api/snapshot/status", {cache:"no-store"});
+    const j = await r.json();
+    const el = document.getElementById("snap_state");
+    if(!el) return;
+    if(j.running){ el.innerHTML = '<span style="color:#fbbf24">推送中…</span>'; return; }
+    if(j.last_err){ el.innerHTML = `<span style="color:#ef4444">上次失败: ${j.last_err.slice(0,60)}</span>`; return; }
+    if(j.last_ts){
+      el.innerHTML = `上次快照 <b>${j.last_ts}</b> · <span style="color:#94a3b8">${j.last_git}</span> · <a href="${j.pages_url}" target="_blank" style="color:#60a5fa">公开页 →</a>`;
+    } else {
+      el.innerHTML = '<span style="color:#64748b">从未推送 (点 📸 推快照)</span>';
+    }
+  }catch(e){}
+}
+async function pushSnapshot(){
+  const btn = document.getElementById("snapBtn");
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span><span>推送中…</span>';
+  try{
+    const r = await fetch("/api/snapshot", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    const j = await r.json();
+    if(!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
+    alert(`✅ 快照已推 ${j.git}\n时间: ${j.ts}\n大小: ${j.size_kb} KB\n\n公开页 1 分钟内更新:\n${j.pages_url}`);
+  }catch(e){
+    alert("推送失败: "+e.message);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = orig;
+    refreshSnapState();
+  }
+}
+
 async function refresh(){
   const btn = document.getElementById("refreshBtn");
   btn.disabled = true;
@@ -1138,6 +1221,7 @@ function updateAgo(){
 render();
 setInterval(updateAgo, 1000);
 window.addEventListener("resize", ()=> charts.forEach(c=>c.resize()));
+if (!PUBLIC_MODE) refreshSnapState();
 </script>
 </body></html>
 """
@@ -1219,6 +1303,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"watchlist": [{"code": c, "name": n} for c, n in load_watchlist()]})
         elif u.path == "/api/positions":
             self._json({"positions": load_positions()})
+        elif u.path == "/api/snapshot/status":
+            self._json({"running": _SNAPSHOT["running"], "last_ts": _SNAPSHOT["last_ts"],
+                        "last_git": _SNAPSHOT["last_git"], "last_err": _SNAPSHOT["last_err"],
+                        "pages_url": PAGES_URL})
         else:
             self.send_error(404)
 
@@ -1261,6 +1349,25 @@ class Handler(BaseHTTPRequestHandler):
             save_positions(clean)
             print(f"[positions] saved {len(clean)} holdings")
             return self._json({"ok": True, "positions": clean})
+        elif u.path == "/api/snapshot":
+            # 单任务串行 (避免并发 push 冲突)
+            acquired = _SNAPSHOT["lock"].acquire(blocking=False)
+            if not acquired or _SNAPSHOT["running"]:
+                if acquired: _SNAPSHOT["lock"].release()
+                return self._json({"error": "已有快照任务在跑, 请稍等"}, status=429)
+            _SNAPSHOT["running"] = True
+            try:
+                r = run_snapshot()
+                _SNAPSHOT["last_ts"] = r["ts"]
+                _SNAPSHOT["last_git"] = r["git"]
+                _SNAPSHOT["last_err"] = None
+                self._json({"ok": True, **r})
+            except Exception as e:
+                _SNAPSHOT["last_err"] = str(e)
+                self._json({"error": str(e)}, status=500)
+            finally:
+                _SNAPSHOT["running"] = False
+                _SNAPSHOT["lock"].release()
         elif u.path == "/api/watchlist/reset":
             save_watchlist(DEFAULT_WATCHLIST)
             _YF_CACHE["ts"] = 0
