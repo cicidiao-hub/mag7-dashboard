@@ -472,16 +472,24 @@ def run_snapshot():
     print(f"[snapshot] git: {git_status}")
     return {"ts": ts, "size_kb": size_kb, "git": git_status, "pages_url": PAGES_URL}
 
-def get_payload_cached():
-    """优先返回缓存; 缓存为空时同步触发一次构建。后台线程会持续刷新。"""
-    with _PAYLOAD_LOCK:
-        cached, ts = _PAYLOAD_CACHE["data"], _PAYLOAD_CACHE["ts"]
-    if cached is not None:
-        return cached, ts
+def get_payload_cached(force=False):
+    """优先返回缓存; 缓存为空或 force=True 时同步重建。后台线程会持续刷新。"""
+    if not force:
+        with _PAYLOAD_LOCK:
+            cached, ts = _PAYLOAD_CACHE["data"], _PAYLOAD_CACHE["ts"]
+        if cached is not None:
+            return cached, ts
     data, ts = build_payload()
     with _PAYLOAD_LOCK:
         _PAYLOAD_CACHE.update(data=data, ts=ts, built_at=time.time(), err=None)
     return data, ts
+
+def invalidate_payload():
+    """让下一次 get_payload_cached() 必须重建。watchlist 变动后调用。"""
+    with _PAYLOAD_LOCK:
+        _PAYLOAD_CACHE["data"] = None
+        _PAYLOAD_CACHE["ts"] = None
+        _PAYLOAD_CACHE["built_at"] = 0
 
 def _prewarm_loop():
     """后台预热线程: 每 _PAYLOAD_TTL 秒重新构建一次 payload."""
@@ -578,16 +586,19 @@ HTML_TMPL = """<!DOCTYPE html>
   .search-wrap{position:relative}
   .search-wrap input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:7px 12px;border-radius:6px;width:260px;font-size:13px;outline:none}
   .search-wrap input:focus{border-color:#3b82f6}
-  .search-results{position:absolute;top:38px;right:0;background:#0f172a;border:1px solid #334155;border-radius:6px;max-height:340px;overflow-y:auto;width:380px;z-index:1000;display:none;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .search-results{position:absolute;top:38px;right:0;background:#0f172a;border:1px solid #334155;border-radius:6px;max-height:380px;overflow-y:auto;width:460px;z-index:1000;display:none;box-shadow:0 10px 30px rgba(0,0,0,.4)}
   .search-results.show{display:block}
-  .sr-item{padding:9px 14px;cursor:pointer;border-bottom:1px solid #1f2937;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-  .sr-item:hover{background:#1e293b} .sr-item:last-child{border-bottom:none}
-  .sr-item .sr-code{color:#60a5fa;font-weight:600;min-width:70px}
-  .sr-item .sr-name{color:#cbd5e1;flex:1;text-align:left}
-  .sr-item .sr-add{color:#22c55e;font-size:18px}
+  .sr-item{padding:9px 14px;cursor:pointer;border-bottom:1px solid #1f2937;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .sr-item:hover:not(.disabled){background:#1e293b} .sr-item:last-child{border-bottom:none}
+  .sr-item.disabled{opacity:.5;cursor:not-allowed}
+  .sr-item .sr-code{color:#60a5fa;font-weight:600;min-width:72px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .sr-item .sr-name{color:#cbd5e1;flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sr-item .sr-add{color:#22c55e;font-size:12px;padding:4px 12px;border:1px solid #22c55e;border-radius:4px;background:rgba(34,197,94,.08);white-space:nowrap;font-weight:600}
+  .sr-item.disabled .sr-add{color:#64748b;border-color:#334155;background:transparent}
   .sr-empty{padding:14px;color:#64748b;font-size:13px;text-align:center}
-  .card .rm{position:absolute;bottom:6px;right:8px;background:transparent;border:none;color:#475569;font-size:14px;cursor:pointer;padding:2px 8px;border-radius:4px;transition:all .15s}
-  .card .rm:hover{background:#ef4444;color:#fff}
+  .card .rm{position:absolute;top:6px;left:6px;width:22px;height:22px;padding:0;background:rgba(15,23,42,.85);border:1px solid #334155;color:#94a3b8;font-size:14px;line-height:1;cursor:pointer;border-radius:50%;opacity:0;transition:opacity .15s,background .15s,color .15s,border-color .15s;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+  .card:hover .rm{opacity:.85}
+  .card .rm:hover{opacity:1;background:#ef4444;border-color:#ef4444;color:#fff}
   .limit-note{font-size:11px;color:#fbbf24;background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:9px 14px;border-radius:6px;margin-bottom:14px;line-height:1.6}
   .btn-ghost{background:transparent;color:#94a3b8;border:1px solid #334155;padding:6px 12px;font-size:12px}
   .btn-ghost:hover{background:#1e293b;color:#e2e8f0}
@@ -788,13 +799,16 @@ function render(){
           <div class="pos-stat"><span>盈亏</span><b class="${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}$${fmt(pnl,0)} (${fmt(pnlPct)}%)</b></div>
           ` : `<div class="pos-stat" style="text-align:center;color:#475569">未持仓</div>`}
         </div>`}
-        ${PUBLIC_MODE ? '' : `<button class="rm" title="从自选移除" onclick="removeStock('${s.code}','${(s.name||'').replace(/'/g,\"\\\\'\")}')">×</button>`}
+        ${PUBLIC_MODE ? '' : `<button class="rm" data-code="${s.code}" data-name="${(s.name||'').replace(/"/g,'&quot;')}" title="从自选移除 ${s.name}" aria-label="删除">×</button>`}
       </div>`);
   });
   if (!PUBLIC_MODE) {
     cards.querySelectorAll(".pos-panel input").forEach(inp=>{
       inp.addEventListener("change", onPosChange);
       inp.addEventListener("blur", onPosChange);
+    });
+    cards.querySelectorAll(".rm").forEach(btn=>{
+      btn.addEventListener("click", ()=> removeStock(btn.dataset.code, btn.dataset.name));
     });
     renderPortfolio();
   }
@@ -1141,7 +1155,7 @@ async function refresh(){
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span><span>拉取中...</span>';
   try{
-    const r = await fetch("/api/data", {cache:"no-store"});
+    const r = await fetch("/api/data?force=1", {cache:"no-store"});
     if(!r.ok) throw new Error("HTTP "+r.status);
     const j = await r.json();
     if(j.error) throw new Error(j.error);
@@ -1205,19 +1219,23 @@ sInput.addEventListener("input", ()=>{
       const r = await fetch("/api/search?q="+encodeURIComponent(q));
       const j = await r.json();
       const inWL = new Set(WL.map(x=>x.code));
+      const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
       if(!j.results || !j.results.length){
         sResults.innerHTML = '<div class="sr-empty">未找到匹配的美股</div>';
       } else {
         sResults.innerHTML = j.results.map(it=>{
           const exists = inWL.has(it.code);
           const codeShort = it.code.replace("US.","");
-          const safeName = (it.name||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");
-          return `<div class="sr-item" ${exists?'style="opacity:.5;cursor:not-allowed" title="已在自选"':`onclick="addStock('${it.code}','${safeName.replace(/'/g,"\\\\'")}')"`}>
-            <span class="sr-code">${codeShort}</span>
-            <span class="sr-name">${safeName}</span>
-            <span class="sr-add">${exists?'✓':'+'}</span>
+          const tip = `${it.name||""} (${codeShort})`;
+          return `<div class="sr-item${exists?' disabled':''}" data-code="${esc(it.code)}" data-name="${esc(it.name)}" title="${esc(tip)}">
+            <span class="sr-code">${esc(codeShort)}</span>
+            <span class="sr-name">${esc(it.name)}</span>
+            <span class="sr-add">${exists?'✓ 已加':'+ 添加'}</span>
           </div>`;
         }).join("");
+        sResults.querySelectorAll(".sr-item:not(.disabled)").forEach(el=>{
+          el.addEventListener("click", ()=> addStock(el.dataset.code, el.dataset.name));
+        });
       }
       sResults.classList.add("show");
     }catch(e){
@@ -1302,9 +1320,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif u.path == "/api/data":
-            print("[GET /api/data] 读取缓存...")
+            force = parse_qs(u.query).get("force", ["0"])[0] in ("1", "true")
+            print(f"[GET /api/data] {'强制重建' if force else '读取缓存'}...")
             try:
-                data, ts = get_payload_cached()
+                data, ts = get_payload_cached(force=force)
                 wl = load_watchlist()
                 self._json({"data": data, "ts": ts,
                             "watchlist": [{"code": c, "name": n} for c, n in wl],
@@ -1349,6 +1368,7 @@ class Handler(BaseHTTPRequestHandler):
             wl.append((code, name or code))
             save_watchlist(wl)
             _YF_CACHE["ts"] = 0  # 失效 yfinance 缓存以纳入新股
+            invalidate_payload()
             print(f"[watchlist] + {code} ({name}) → 共 {len(wl)} 只")
             self._json({"ok": True, "watchlist": [{"code": c, "name": n} for c, n in wl]})
         elif u.path == "/api/watchlist/remove":
@@ -1357,6 +1377,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(wl) == 0:
                 return self._json({"error": "自选不能为空"}, status=400)
             save_watchlist(wl)
+            invalidate_payload()
             print(f"[watchlist] - {code} → 共 {len(wl)} 只")
             self._json({"ok": True, "watchlist": [{"code": c, "name": n} for c, n in wl]})
         elif u.path == "/api/positions":
@@ -1389,6 +1410,7 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/watchlist/reset":
             save_watchlist(DEFAULT_WATCHLIST)
             _YF_CACHE["ts"] = 0
+            invalidate_payload()
             print("[watchlist] reset 为默认 Mag7")
             self._json({"ok": True, "watchlist": [{"code": c, "name": n} for c, n in DEFAULT_WATCHLIST]})
         else:
